@@ -9,6 +9,7 @@
     "pm2": "pm2 start server.js --name cdkeys-steam"
   },
   "dependencies": {
+    "@google-cloud/translate": "^9.2.0",
     "axios": "^1.6.2",
     "cheerio": "^1.0.0-rc.12",
     "compression": "^1.7.4",

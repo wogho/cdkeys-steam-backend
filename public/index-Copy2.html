@@ -1,0 +1,805 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CDKeys-Steam 가격 비교 도구</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: #333;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+            color: white;
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .header p {
+            font-size: 1.2em;
+            opacity: 0.9;
+        }
+
+        .card {
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            margin-bottom: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+        }
+
+        .input-group {
+            margin-bottom: 20px;
+        }
+
+        .input-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #555;
+        }
+
+        .input-group input {
+            width: 100%;
+            padding: 12px 15px;
+            border: 2px solid #e1e5e9;
+            border-radius: 8px;
+            font-size: 16px;
+            transition: border-color 0.3s;
+        }
+
+        .input-group input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .button-group {
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            padding: 12px 25px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            text-decoration: none;
+            display: inline-block;
+            text-align: center;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+        }
+
+        .btn-secondary {
+            background: #f8f9fa;
+            color: #495057;
+            border: 2px solid #dee2e6;
+        }
+
+        .btn-secondary:hover {
+            background: #e9ecef;
+        }
+
+        .btn-danger {
+            background: #dc3545;
+            color: white;
+        }
+
+        .btn-danger:hover {
+            background: #c82333;
+            transform: translateY(-2px);
+        }
+
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none !important;
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 20px;
+            color: #667eea;
+        }
+
+        .loading.show {
+            display: block;
+        }
+
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 15px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .results {
+            display: none;
+        }
+
+        .results.show {
+            display: block;
+        }
+
+        .result-card {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 15px;
+            border-left: 5px solid #667eea;
+        }
+
+        .game-item {
+            background: white;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 10px;
+            border: 1px solid #e1e5e9;
+        }
+
+        .game-title {
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 8px;
+        }
+
+        .price-comparison {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+
+        .price-item {
+            text-align: center;
+            padding: 8px;
+            border-radius: 5px;
+        }
+
+        .price-cdkeys {
+            background: #e3f2fd;
+            color: #1976d2;
+        }
+
+        .price-steam {
+            background: #f3e5f5;
+            color: #7b1fa2;
+        }
+
+        .savings {
+            background: #fff3cd;
+            color: #856404;
+            padding: 8px;
+            border-radius: 5px;
+            font-weight: 600;
+            text-align: center;
+        }
+
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+            padding: 15px;
+            border-radius: 8px;
+            border: 1px solid #f5c6cb;
+            margin-top: 15px;
+        }
+
+        .footer {
+            text-align: center;
+            color: white;
+            opacity: 0.8;
+            margin-top: 40px;
+        }
+
+        .server-info {
+            background: rgba(255,255,255,0.1);
+            color: white;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+
+        .user-info {
+            background: rgba(255,255,255,0.05);
+            color: white;
+            padding: 10px 15px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            text-align: center;
+            font-size: 14px;
+        }
+
+        .timestamp {
+            opacity: 0.7;
+            font-size: 12px;
+        }
+
+        .admin-controls {
+            background: rgba(255,255,255,0.1);
+            color: white;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+
+        .admin-controls .btn {
+            margin: 5px;
+            padding: 8px 16px;
+            font-size: 14px;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 15px;
+        }
+
+        .stat-card {
+            background: rgba(255,255,255,0.1);
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+        }
+
+        .stat-number {
+            font-size: 24px;
+            font-weight: 600;
+            margin-bottom: 5px;
+        }
+
+        .stat-label {
+            font-size: 14px;
+            opacity: 0.8;
+        }
+
+        .tips-section {
+            background: #f0f8ff;
+            border: 1px solid #b3d9ff;
+            border-radius: 8px;
+            padding: 15px;
+            margin-top: 15px;
+        }
+
+        .tips-section h4 {
+            color: #0066cc;
+            margin-bottom: 10px;
+        }
+
+        .tips-section ul {
+            margin-left: 20px;
+            color: #666;
+        }
+
+        .tips-section li {
+            margin-bottom: 5px;
+        }
+
+        .exchange-rate {
+            background: rgba(255,255,255,0.1);
+            color: white;
+            padding: 10px;
+            border-radius: 5px;
+            margin-bottom: 15px;
+            text-align: center;
+            font-size: 14px;
+        }
+
+        .focus-section {
+            background: #e3f2fd;
+            border: 2px solid #1976d2;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+
+        .focus-section h3 {
+            color: #1976d2;
+            margin-bottom: 15px;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🎮 CDKeys ↔ Steam 가격 비교 도구</h1>
+            <p>CDKeys와 Steam 정가를 비교하여 절약 가능한 게임을 찾아드립니다</p>
+        </div>
+
+        <div class="user-info">
+            <strong>👤 사용자:</strong> wogho &nbsp;&nbsp;
+            <span class="timestamp">📅 2025-08-16 14:15:35 UTC</span>
+        </div>
+
+        <div class="exchange-rate" id="exchangeRate">
+            💱 환율 정보를 불러오는 중...
+        </div>
+
+        <div class="server-info">
+            <strong>🚀 CDKeys ↔ Steam 전용 가격 비교 도구</strong><br>
+            전체 텍스트 추출 방식으로 안정적인 게임 정보 수집<br>
+            <small>향상된 게임명 파싱과 Steam 가격 추정 알고리즘 적용</small>
+        </div>
+
+        <div class="admin-controls">
+            <h4>🔧 관리 도구</h4>
+            <button class="btn btn-secondary" onclick="checkServerStatus()">📊 서버 상태</button>
+            <button class="btn btn-danger" onclick="clearCache()">🗑️ 캐시 삭제</button>
+            <button class="btn btn-secondary" onclick="getExchangeRate()">💱 환율 새로고침</button>
+        </div>
+
+        <div class="focus-section">
+            <h3>🎯 CDKeys ↔ Steam 가격 비교에 집중</h3>
+            <p style="color: #666; text-align: center; margin-bottom: 0;">
+                네이버 가격 비교 기능을 제거하고 CDKeys와 Steam 간의 정확한 가격 비교에 집중합니다
+            </p>
+        </div>
+
+        <div class="card">
+            <h2>💰 CDKeys ↔ Steam 가격 비교</h2>
+            <div class="input-group">
+                <label for="cdkeysUrl">CDKeys 카테고리 URL:</label>
+                <input type="url" id="cdkeysUrl" placeholder="https://www.cdkeys.com/..." 
+                       value="https://www.cdkeys.com/pc/games/steam-pc">
+            </div>
+            <div class="input-group">
+                <label for="minDifference">최소 절약 금액 (원):</label>
+                <input type="number" id="minDifference" value="5000" min="0" step="1000">
+            </div>
+            <div class="button-group">
+                <button class="btn btn-primary" onclick="comparePrices()" style="font-size: 18px; padding: 15px 30px;">
+                    🔍 가격 비교 시작
+                </button>
+                <button class="btn btn-secondary" onclick="clearResults()">🗑️ 결과 초기화</button>
+            </div>
+
+            <div class="tips-section">
+                <h4>💡 사용 팁</h4>
+                <ul>
+                    <li><strong>URL 입력:</strong> CDKeys의 카테고리 페이지 URL을 입력하세요</li>
+                    <li><strong>최소 절약:</strong> 원하는 최소 절약 금액을 설정하여 필터링하세요</li>
+                    <li><strong>전체 텍스트 추출:</strong> DOM 구조에 의존하지 않는 안정적인 크롤링</li>
+                    <li><strong>향상된 파싱:</strong> 게임명과 가격을 정확하게 매칭합니다</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="loading" id="loading">
+            <div class="spinner"></div>
+            <p>CDKeys와 Steam 가격을 비교하고 있습니다...<br>
+            <small>전체 텍스트를 추출하여 정확한 게임 정보를 수집 중입니다 ⏳</small></p>
+        </div>
+
+        <div class="results" id="results">
+            <div class="card">
+                <h2>📊 CDKeys ↔ Steam 비교 결과</h2>
+                <div id="resultContent"></div>
+            </div>
+        </div>
+
+        <div class="results" id="serverStatus">
+            <div class="card">
+                <h2>📊 서버 상태</h2>
+                <div id="serverStatusContent"></div>
+            </div>
+        </div>
+
+        <div class="footer">
+            <p>💡 <strong>CDKeys vs Steam:</strong> CDKeys 가격과 Steam 정가를 비교하여 절약 가능한 게임을 찾아드립니다</p>
+            <p>⚡ <strong>전체 텍스트 추출:</strong> DOM 구조에 의존하지 않아 더욱 안정적인 검색을 제공합니다</p>
+            <p>🎮 <strong>향상된 게임 파싱:</strong> 더 정확한 게임명 추출과 가격 매칭</p>
+            <p style="margin-top: 15px; font-size: 12px; opacity: 0.6;">
+                서버: http://140.238.30.184:3000 | 개발자: wogho | 업데이트: 2025-08-16 14:15:35
+            </p>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = window.location.origin;
+
+        // 사용자 정보
+        const USER_INFO = {
+            login: 'wogho',
+            timestamp: '2025-08-16 14:15:35'
+        };
+
+        // 숫자 포맷팅
+        function formatNumber(num) {
+            if (!num || isNaN(num)) return '0';
+            return new Intl.NumberFormat('ko-KR').format(num);
+        }
+
+        // 로딩 표시/숨김
+        function showLoading() {
+            document.getElementById('loading').classList.add('show');
+            document.getElementById('results').classList.remove('show');
+            document.getElementById('serverStatus').classList.remove('show');
+        }
+
+        function hideLoading() {
+            document.getElementById('loading').classList.remove('show');
+        }
+
+        // 환율 정보 가져오기
+        async function getExchangeRate() {
+            try {
+                const response = await fetch(`${API_BASE}/api/exchange-rate`);
+                const data = await response.json();
+                
+                if (data.success) {
+                    document.getElementById('exchangeRate').innerHTML = `
+                        💱 <strong>${data.currency}:</strong> 1 USD = ${formatNumber(data.rate)}원 
+                        <small>(${new Date(data.lastUpdate).toLocaleString('ko-KR')})</small>
+                    `;
+                } else {
+                    document.getElementById('exchangeRate').innerHTML = '💱 환율 정보를 가져올 수 없습니다.';
+                }
+            } catch (error) {
+                console.error('환율 조회 오류:', error);
+                document.getElementById('exchangeRate').innerHTML = '💱 환율 정보 오류';
+            }
+        }
+
+        // 서버 상태 확인
+        async function checkServerStatus() {
+            showLoading();
+            
+            try {
+                const response = await fetch(`${API_BASE}/api/status`);
+                const data = await response.json();
+                
+                if (response.ok) {
+                    displayServerStatus(data);
+                } else {
+                    throw new Error('서버 상태 확인 실패');
+                }
+            } catch (error) {
+                console.error('서버 상태 확인 오류:', error);
+                displayServerError('서버 상태를 확인할 수 없습니다: ' + error.message);
+            } finally {
+                hideLoading();
+            }
+        }
+
+        // 캐시 삭제
+        async function clearCache() {
+            if (!confirm('모든 캐시를 삭제하시겠습니까?')) {
+                return;
+            }
+            
+            try {
+                const response = await fetch(`${API_BASE}/api/cache`, {
+                    method: 'DELETE'
+                });
+                const data = await response.json();
+                
+                if (data.success) {
+                    alert('✅ 캐시가 성공적으로 삭제되었습니다.');
+                    console.log('캐시 삭제 완료');
+                } else {
+                    throw new Error(data.message || '캐시 삭제 실패');
+                }
+            } catch (error) {
+                console.error('캐시 삭제 오류:', error);
+                alert('❌ 캐시 삭제 중 오류가 발생했습니다: ' + error.message);
+            }
+        }
+
+        // 서버 상태 표시
+        function displayServerStatus(data) {
+            const content = document.getElementById('serverStatusContent');
+            
+            let html = `
+                <div class="result-card">
+                    <h3>🖥️ 서버 정보</h3>
+                    <div class="stats-grid">
+                        <div class="stat-card">
+                            <div class="stat-number">${data.status}</div>
+                            <div class="stat-label">서버 상태</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-number">${Math.round(data.uptime / 3600)}h</div>
+                            <div class="stat-label">가동 시간</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-number">${data.cache.keys}</div>
+                            <div class="stat-label">캐시 키 수</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-number">${formatNumber(data.exchangeRate)}</div>
+                            <div class="stat-label">USD/KRW</div>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            if (data.memory) {
+                html += `
+                    <div class="result-card">
+                        <h3>💾 메모리 사용량</h3>
+                        <p><strong>RSS:</strong> ${Math.round(data.memory.rss / 1024 / 1024)}MB</p>
+                        <p><strong>Heap Used:</strong> ${Math.round(data.memory.heapUsed / 1024 / 1024)}MB</p>
+                        <p><strong>Heap Total:</strong> ${Math.round(data.memory.heapTotal / 1024 / 1024)}MB</p>
+                    </div>
+                `;
+            }
+
+            if (data.features) {
+                html += `
+                    <div class="result-card">
+                        <h3>⚡ 지원 기능</h3>
+                        <ul>
+                            ${data.features.map(feature => `<li>✅ ${feature}</li>`).join('')}
+                        </ul>
+                    </div>
+                `;
+            }
+
+            if (data.cache.stats) {
+                html += `
+                    <div class="result-card">
+                        <h3>📊 캐시 통계</h3>
+                        <p><strong>히트:</strong> ${data.cache.stats.hits}</p>
+                        <p><strong>미스:</strong> ${data.cache.stats.misses}</p>
+                        <p><strong>히트율:</strong> ${data.cache.stats.hits + data.cache.stats.misses > 0 ? 
+                            Math.round((data.cache.stats.hits / (data.cache.stats.hits + data.cache.stats.misses)) * 100) : 0}%</p>
+                    </div>
+                `;
+            }
+
+            content.innerHTML = html;
+            document.getElementById('serverStatus').classList.add('show');
+        }
+
+        function displayServerError(message) {
+            const content = document.getElementById('serverStatusContent');
+            content.innerHTML = `<div class="error">${message}</div>`;
+            document.getElementById('serverStatus').classList.add('show');
+        }
+
+        // CDKeys ↔ Steam 가격 비교
+        async function comparePrices() {
+            const url = document.getElementById('cdkeysUrl').value.trim();
+            const minDifference = parseInt(document.getElementById('minDifference').value) || 5000;
+
+            if (!url) {
+                alert('CDKeys URL을 입력해주세요.');
+                return;
+            }
+
+            showLoading();
+
+            try {
+                console.log('=== CDKeys ↔ Steam 가격 비교 시작 ===');
+                console.log('사용자:', USER_INFO.login);
+                console.log('시간:', USER_INFO.timestamp);
+                console.log('요청 데이터:', { url, minDifference });
+                
+                const response = await fetch(`${API_BASE}/api/compare`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ 
+                        url, 
+                        minDifference,
+                        user: USER_INFO.login,
+                        timestamp: USER_INFO.timestamp
+                    })
+                });
+
+                const data = await response.json();
+                console.log('서버 응답:', data);
+
+                if (!response.ok) {
+                    throw new Error(data.error || '서버 오류가 발생했습니다.');
+                }
+
+                displayResults(data);
+            } catch (error) {
+                console.error('가격 비교 오류:', error);
+                displayError('가격 비교 중 오류가 발생했습니다: ' + error.message);
+            } finally {
+                hideLoading();
+            }
+        }
+
+        // 결과 표시
+        function displayResults(data) {
+            const resultContent = document.getElementById('resultContent');
+            
+            if (!data.success) {
+                resultContent.innerHTML = `<div class="error">오류: ${data.error}</div>`;
+                document.getElementById('results').classList.add('show');
+                return;
+            }
+
+            const cacheIndicator = data.fromCache ? ' <span style="color: #28a745;">(캐시)</span>' : '';
+
+            let html = `
+                <div class="result-card">
+                    <h3>📈 전체 분석 결과${cacheIndicator}</h3>
+                    <div class="stats-grid">
+                        <div class="stat-card">
+                            <div class="stat-number">${data.totalGames}</div>
+                            <div class="stat-label">전체 게임</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-number">${data.discountedGames}</div>
+                            <div class="stat-label">절약 가능</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-number">${data.totalGames > 0 ? Math.round((data.discountedGames / data.totalGames) * 100) : 0}%</div>
+                            <div class="stat-label">절약률</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-number">${formatNumber(data.minDifference)}원</div>
+                            <div class="stat-label">최소 절약</div>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            if (data.games && data.games.length > 0) {
+                html += '<h3>💎 절약 가능한 게임 목록 (절약 금액 순)</h3>';
+                
+                data.games.forEach((game, index) => {
+                    html += `
+                        <div class="game-item">
+                            <div class="game-title">
+                                ${index + 1}. ${game.exactName || game.name}
+                            </div>
+                            <div class="price-comparison">
+                                <div class="price-item price-cdkeys">
+                                    CDKeys<br><strong>${formatNumber(game.cdkeysPrice)}원</strong>
+                                    <small>(${game.cdkeysPriceUSD ? '$' + game.cdkeysPriceUSD : ''})</small>
+                                </div>
+                                <div class="price-item price-steam">
+                                    Steam 정가<br><strong>${formatNumber(game.steamOriginalPrice)}원</strong>
+                                    ${game.steamDiscount ? `<br><small>${game.steamDiscount}</small>` : ''}
+                                </div>
+                            </div>
+                            <div class="savings">
+                                💰 ${formatNumber(game.savings)}원 절약 (${game.savingsPercent}% 할인)
+                            </div>
+                            <div style="margin-top: 10px;">
+                                <a href="${game.cdkeysUrl}" target="_blank" class="btn btn-primary" style="font-size: 14px; padding: 8px 16px;">
+                                    🛒 CDKeys에서 구매
+                                </a>
+                            </div>
+                        </div>
+                    `;
+                });
+            } else {
+                html += `
+                    <div class="result-card">
+                        <p>설정한 최소 절약 금액 이상의 게임을 찾지 못했습니다.</p>
+                        <div class="tips-section">
+                            <h4>💡 검색 개선 방법</h4>
+                            <ul>
+                                <li>최소 절약 금액을 낮춰보세요 (현재: ${formatNumber(data.minDifference)}원)</li>
+                                <li>다른 CDKeys 카테고리를 시도해보세요</li>
+                                <li>시간대를 달리해서 다시 시도해보세요</li>
+                                <li>캐시를 삭제하고 새로운 데이터로 시도해보세요</li>
+                            </ul>
+                        </div>
+                    </div>
+                `;
+            }
+
+            resultContent.innerHTML = html;
+            document.getElementById('results').classList.add('show');
+        }
+
+        // 오류 표시
+        function displayError(message) {
+            const resultContent = document.getElementById('resultContent');
+            resultContent.innerHTML = `<div class="error">${message}</div>`;
+            document.getElementById('results').classList.add('show');
+        }
+
+        // 결과 초기화
+        function clearResults() {
+            document.getElementById('results').classList.remove('show');
+            console.log('CDKeys ↔ Steam 결과 초기화');
+        }
+
+        // 페이지 로드시 초기화
+        window.addEventListener('load', async function() {
+            console.log('=== 페이지 로드 완료 ===');
+            console.log('사용자:', USER_INFO.login);
+            console.log('시간:', USER_INFO.timestamp);
+            
+            // 환율 정보 로드
+            await getExchangeRate();
+            
+            // 서버 상태 확인
+            try {
+                const response = await fetch(`${API_BASE}/api/status`);
+                if (response.ok) {
+                    const data = await response.json();
+                    console.log('✅ 서버 상태:', data);
+                    console.log('🚀 CDKeys ↔ Steam 전용 모드 활성화됨');
+                    
+                    if (data.features) {
+                        console.log('✅ 지원 기능:', data.features);
+                    }
+                } else {
+                    console.warn('⚠️ 서버 상태 확인 실패');
+                }
+            } catch (error) {
+                console.error('❌ 서버 연결 실패:', error);
+            }
+        });
+
+        // 엔터키 이벤트
+        document.getElementById('cdkeysUrl').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                comparePrices();
+            }
+        });
+
+        document.getElementById('minDifference').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                comparePrices();
+            }
+        });
+
+        // 콘솔 환영 메시지
+        console.log(`
+🎮 CDKeys ↔ Steam 가격 비교 도구
+👤 사용자: ${USER_INFO.login}
+📅 접속 시간: ${USER_INFO.timestamp}
+🚀 전체 텍스트 추출 방식 활성화
+⚡ DOM 구조에 독립적인 안정적 크롤링
+🔧 관리 도구: 서버 상태, 캐시 관리, 환율 확인
+🎯 CDKeys ↔ Steam 전용 가격 비교에 집중
+        `);
+    </script>
+</body>
+</html>

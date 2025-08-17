@@ -541,53 +541,61 @@
             
             // 통계 표시
             document.getElementById('statsSection').style.display = 'grid';
-            document.getElementById('totalGames').textContent = totalGames;
-            document.getElementById('discountedGames').textContent = discountedGames;
+            document.getElementById('totalGames').textContent = totalGames || 0;
+            document.getElementById('discountedGames').textContent = discountedGames || 0;
             
             if (games && games.length > 0) {
-                const avgSavings = Math.round(games.reduce((sum, g) => sum + g.savings, 0) / games.length);
-                const maxSavings = Math.max(...games.map(g => g.savings));
+                const avgSavings = Math.round(games.reduce((sum, g) => sum + (g.savings || 0), 0) / games.length);
+                const maxSavings = Math.max(...games.map(g => g.savings || 0));
                 
                 document.getElementById('avgSavings').textContent = formatPrice(avgSavings);
                 document.getElementById('maxSavings').textContent = formatPrice(maxSavings);
                 
                 // 게임 카드 생성
-                const resultsHTML = games.map(game => `
-                    <div class="game-card">
-                        <div class="game-header">
-                            <div class="game-title">${game.exactName || game.name}</div>
-                            <div class="savings-badge">${game.savingsPercent}% 절약</div>
-                        </div>
-                        <div class="price-comparison">
-                            <div class="price-box cdkeys-price">
-                                <div class="price-label">CDKeys</div>
-                                <div class="price-value">${formatPrice(game.cdkeysPrice)}</div>
+                const resultsHTML = games.map(game => {
+                    // null 체크 추가
+                    const cdkeysPrice = game.cdkeysPrice || 0;
+                    const steamOriginalPrice = game.steamOriginalPrice || 0;
+                    const steamFinalPrice = game.steamFinalPrice || steamOriginalPrice;
+                    const savings = game.savings || 0;
+                    
+                    return `
+                        <div class="game-card">
+                            <div class="game-header">
+                                <div class="game-title">${game.exactName || game.name}</div>
+                                <div class="savings-badge">${game.savingsPercent || 0}% 절약</div>
                             </div>
-                            <div class="price-box steam-price">
-                                <div class="price-label">Steam</div>
-                                <div class="price-value">
-                                    ${formatPrice(game.steamFinalPrice)}
-                                    ${game.steamDiscount ? `<span class="discount-badge">${game.steamDiscount}</span>` : ''}
+                            <div class="price-comparison">
+                                <div class="price-box cdkeys-price">
+                                    <div class="price-label">CDKeys</div>
+                                    <div class="price-value">${formatPrice(cdkeysPrice)}</div>
                                 </div>
-                                ${game.steamOriginalPrice !== game.steamFinalPrice ? 
-                                    `<div class="original-price">${formatPrice(game.steamOriginalPrice)}</div>` : ''}
-                            </div>
-                            <div style="text-align: center;">
-                                <div style="font-size: 0.9em; color: #666; margin-bottom: 5px;">절약액</div>
-                                <div style="font-size: 1.8em; font-weight: bold; color: #4caf50;">
-                                    ${formatPrice(game.savings)}
+                                <div class="price-box steam-price">
+                                    <div class="price-label">Steam</div>
+                                    <div class="price-value">
+                                        ${formatPrice(steamFinalPrice)}
+                                        ${game.steamDiscount ? `<span class="discount-badge">${game.steamDiscount}</span>` : ''}
+                                    </div>
+                                    ${steamOriginalPrice !== steamFinalPrice ? 
+                                        `<div class="original-price">${formatPrice(steamOriginalPrice)}</div>` : ''}
+                                </div>
+                                <div style="text-align: center;">
+                                    <div style="font-size: 0.9em; color: #666; margin-bottom: 5px;">절약액</div>
+                                    <div style="font-size: 1.8em; font-weight: bold; color: #4caf50;">
+                                        ${formatPrice(savings)}
+                                    </div>
                                 </div>
                             </div>
+                            ${game.cdkeysUrl ? `
+                            <div class="action-buttons">
+                                <a href="${game.cdkeysUrl}" target="_blank" class="btn-link btn-cdkeys">
+                                    CDKeys에서 구매
+                                </a>
+                            </div>
+                            ` : ''}
                         </div>
-                        ${game.cdkeysUrl ? `
-                        <div class="action-buttons">
-                            <a href="${game.cdkeysUrl}" target="_blank" class="btn-link btn-cdkeys">
-                                CDKeys에서 구매
-                            </a>
-                        </div>
-                        ` : ''}
-                    </div>
-                `).join('');
+                    `;
+                }).join('');
                 
                 document.getElementById('results').innerHTML = resultsHTML;
             } else {
@@ -597,6 +605,15 @@
                     '<div class="error-message">조건에 맞는 할인 게임을 찾을 수 없습니다.</div>';
             }
         }
+        
+        // 가격 포맷 함수도 null 체크 추가
+        function formatPrice(price) {
+            if (price === null || price === undefined || isNaN(price)) {
+                return '₩0';
+            }
+            return `₩${price.toLocaleString('ko-KR')}`;
+        }
+        
     </script>
 </body>
 </html>

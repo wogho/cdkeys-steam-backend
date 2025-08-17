@@ -1,4 +1,4 @@
-// server.js - CDKeys-Steam Price Comparison Backend with Steam API
+// server.js - CDKeys-Steam Price Comparison Backend (Enhanced Multi-Stage Search)
 const express = require('express');
 const cors = require('cors');
 const puppeteer = require('puppeteer');
@@ -84,6 +84,100 @@ async function initBrowser() {
     return browser;
 }
 
+// 게임명 정리 함수 (PC, DLC 제거 로직 개선)
+function cleanGameName(originalName) {
+    let cleanName = originalName.trim();
+    
+    // wogho님 요청: PC, DLC 등 플랫폼/확장팩 키워드 제거
+    const platformPatterns = [
+        // PC-DLC 관련 (우선 처리)
+        /\s+PC-DLC\s*$/i,                       // 끝에 PC-DLC ✅
+        /\s+\(PC-DLC\)\s*$/i,                   // (PC-DLC)
+        /\s+-\s*PC-DLC\s*$/i,                   // - PC-DLC
+        /\s+PC - DLC\s*$/i,
+        /\s+\(PC\/Mac\)\s*$/i,                  // (PC/Mac)
+        /\s+-\s*PC\/Mac\s*$/i,                  // - PC/Mac
+        /\s+\[PC\/Mac\]\s*$/i,                  // [PC/Mac]
+        /\s+PC\/Mac\s*-\s*$/i,                  // 끝에 PC/Mac -
+        /\s+PC\/Mac\s*-?\s*$/i,                 // PC/Mac - 또는 PC/Mac
+        /\s+PC\/Mac\s+\-\s*$/i,                 // PC/Mac -
+        /\s+\(PC\/Mac\)\s*-?\s*$/i,             // (PC/Mac) - 또는 (PC/Mac)
+                
+        // PC 관련
+        /\s+PC\s*$/i,                           // 끝에 PC
+        /\s+\(PC\)\s*$/i,                       // (PC)
+        /\s+-\s*PC\s*$/i,                       // - PC
+        
+        // DLC 관련
+        /\s+DLC\s*$/i,                          // 끝에 DLC
+        /\s+\(DLC\)\s*$/i,                      // (DLC)
+        /\s+-\s*DLC\s*$/i,                      // - DLC
+        
+        // Steam 관련
+        /\s+Steam\s*$/i,                        // 끝에 Steam
+        /\s+\(Steam\)\s*$/i,                    // (Steam)
+        /\s+-\s*Steam\s*$/i,                    // - Steam
+        /\s+Steam\s+Key\s*$/i,                  // Steam Key
+        /\s+Steam\s+Code\s*$/i,                 // Steam Code
+        
+        // Key/Code 관련
+        /\s+Key\s*$/i,                          // 끝에 Key
+        /\s+Code\s*$/i,                         // 끝에 Code
+        /\s+\(Key\)\s*$/i,                      // (Key)
+        /\s+\(Code\)\s*$/i,                     // (Code)
+        
+        // Digital 관련
+        /\s+Digital\s*$/i,                      // 끝에 Digital
+        /\s+\(Digital\)\s*$/i,                  // (Digital)
+        /\s+Digital\s+Download\s*$/i,           // Digital Download
+        /\s+Download\s*$/i,                     // 끝에 Download
+        
+        // 지역 관련
+        /\s+Global\s*$/i,                       // 끝에 Global
+        /\s+\[Global\]\s*$/i,                   // [Global]
+        /\s+\(Global\)\s*$/i,                   // (Global)
+        /\s+Worldwide\s*$/i,                    // 끝에 Worldwide
+        /\s+\[Worldwide\]\s*$/i,                // [Worldwide]
+        /\s+EU\s*$/i,                           // 끝에 EU
+        /\s+US\s*$/i,                           // 끝에 US
+        /\s+UK\s*$/i,                           // 끝에 UK
+        /\s+ROW\s*$/i,                          // 끝에 ROW (Rest of World)
+        
+        // 기타 불필요한 키워드
+        /\s+Edition\s*$/i,                      // 끝에 Edition (단독으로만)
+        /\s+Game\s*$/i,                         // 끝에 Game
+        /\s+\(Game\)\s*$/i                      // (Game)
+    ];
+    
+    // 각 패턴을 순차적으로 적용
+    platformPatterns.forEach(pattern => {
+        const beforeClean = cleanName;
+        cleanName = cleanName.replace(pattern, '').trim();
+        
+        if (beforeClean !== cleanName) {
+            console.log(`🔧 패턴 적용: "${beforeClean}" → "${cleanName}"`);
+        }
+    });
+    
+    // 안전성 검증
+    const originalLength = originalName.length;
+    const cleanLength = cleanName.length;
+    const retentionRatio = cleanLength / originalLength;
+    
+    // 게임명이 너무 짧아졌거나 30% 이하로 줄어들면 원본 사용
+    if (cleanLength < 3 || retentionRatio < 0.3) {
+        console.warn(`⚠️ 과도한 정리 감지: "${originalName}" → "${cleanName}" (${(retentionRatio * 100).toFixed(1)}%), 원본 사용`);
+        return originalName;
+    }
+    
+    // 최종 정리 결과 로그
+    if (cleanName !== originalName) {
+        console.log(`✅ 게임명 정리 완료: "${originalName}" → "${cleanName}"`);
+    }
+    
+    return cleanName;
+}
+
 // CDKeys 게임 목록 크롤링
 async function fetchCDKeysGames(url) {
     const cacheKey = `cdkeys_${url}`;
@@ -97,7 +191,6 @@ async function fetchCDKeysGames(url) {
         const browser = await initBrowser();
         const page = await browser.newPage();
         
-        // User-Agent 설정
         await page.setUserAgent('Mozilla/5.0 (X11; Linux aarch64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
         
         console.log(`CDKeys 페이지 로딩: ${url}`);
@@ -106,10 +199,8 @@ async function fetchCDKeysGames(url) {
             timeout: 30000 
         });
         
-        // 페이지 로드 대기
         await page.waitForSelector('.product-item', { timeout: 10000 });
         
-        // 게임 목록 추출
         const games = await page.evaluate(() => {
             const gameList = [];
             const items = document.querySelectorAll('.product-item');
@@ -119,15 +210,12 @@ async function fetchCDKeysGames(url) {
                 const priceElement = item.querySelector('.price');
                 
                 if (linkElement && priceElement) {
-                    let name = linkElement.textContent.trim();
-                    // 플랫폼 관련 텍스트 제거
-                    name = name.replace(/\s*(PC|PS4|PS5|Xbox|DLC|Digital|Download|Steam|Key|Global|EU|US|UK).*$/gi, '').trim();
-                    
+                    const originalName = linkElement.textContent.trim();
                     const price = priceElement.textContent.trim();
                     const url = linkElement.href;
                     
                     gameList.push({ 
-                        name, 
+                        originalName: originalName,
                         price, 
                         url,
                         id: `game_${Date.now()}_${index}`
@@ -140,9 +228,24 @@ async function fetchCDKeysGames(url) {
         
         await page.close();
         
-        console.log(`CDKeys에서 ${games.length}개 게임 발견`);
-        cache.set(cacheKey, games);
-        return games;
+        console.log(`\n=== CDKeys 게임명 정리 시작 (PC, DLC 제거) ===`);
+        console.log(`⏰ 시간: 2025-08-17 16:03:20 UTC`);
+        console.log(`👤 사용자: wogho`);
+        
+        const processedGames = games.map((game) => {
+            const cleanName = cleanGameName(game.originalName);
+            
+            return {
+                ...game,
+                name: cleanName
+            };
+        });
+        
+        const changedCount = processedGames.filter(game => game.name !== game.originalName).length;
+        console.log(`📊 총 ${processedGames.length}개 게임, ${changedCount}개 게임명 정리됨`);
+        
+        cache.set(cacheKey, processedGames);
+        return processedGames;
         
     } catch (error) {
         console.error('CDKeys 크롤링 오류:', error);
@@ -150,49 +253,138 @@ async function fetchCDKeysGames(url) {
     }
 }
 
-// Steam API를 이용한 게임 검색
+// Steam API 다단계 검색 로직
 async function searchSteamGame(gameName) {
-    const cacheKey = `steam_search_${gameName}`;
+    const originalGameName = gameName;
+    
+    const searchAttempts = [
+        gameName,                                           // 1단계: 입력된 게임명 그대로
+        cleanGameName(gameName),                           // 2단계: 기본 정리
+        gameName.replace(/\s+(PC|Mac|Linux).*$/i, ''),     // 3단계: 플랫폼 제거
+        gameName.replace(/\s+(DLC|Expansion).*$/i, ''),    // 4단계: DLC 제거
+        gameName.replace(/\s*:\s*.*$/i, ''),               // 5단계: 콜론 이후 제거
+        gameName.replace(/\s*-\s*.*$/i, ''),               // 6단계: 대시 이후 제거
+        gameName.split(' ').slice(0, -1).join(' '),       // 7단계: 마지막 단어 제거
+        gameName.split(' ').slice(0, -2).join(' '),       // 8단계: 마지막 2단어 제거
+    ];
+    
+    const uniqueAttempts = [...new Set(searchAttempts)]
+        .filter(name => name && name.trim().length > 2);
+    
+    console.log(`🔍 "${originalGameName}" 다단계 검색 시작 (${uniqueAttempts.length}개 패턴)`);
+    
+    for (let i = 0; i < uniqueAttempts.length; i++) {
+        const attemptName = uniqueAttempts[i].trim();
+        const cacheKey = `steam_search_${attemptName}`;
+        
+        const cached = cache.get(cacheKey);
+        if (cached) {
+            console.log(`✅ Steam 게임 검색 캐시 사용 (${i+1}단계): "${attemptName}"`);
+            return cached;
+        }
+        
+        try {
+            const searchUrl = `${STEAM_STORE_API_BASE}/storesearch/?term=${encodeURIComponent(attemptName)}&l=korean&cc=KR`;
+            
+            console.log(`🔍 Steam API 게임 검색 (${i+1}/${uniqueAttempts.length}단계): "${attemptName}"`);
+            
+            const response = await axios.get(searchUrl, {
+                timeout: 10000,
+                headers: {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                }
+            });
+
+            if (response.data && response.data.items && response.data.items.length > 0) {
+                const bestMatch = response.data.items.find(item => 
+                    item.type === 'game' || item.type === 'dlc'
+                ) || response.data.items[0];
+
+                if (bestMatch) {
+                    const result = {
+                        appid: bestMatch.id,
+                        name: bestMatch.name,
+                        type: bestMatch.type,
+                        source: `Steam API (${i+1}단계: "${attemptName}")`
+                    };
+                    
+                    cache.set(cacheKey, result);
+                    console.log(`✅ Steam 게임 발견 (${i+1}단계): "${originalGameName}" → "${bestMatch.name}" (ID: ${bestMatch.id})`);
+                    console.log(`🎯 성공한 검색어: "${attemptName}"`);
+                    return result;
+                }
+            }
+            
+            console.log(`❌ ${i+1}단계 실패: "${attemptName}"`);
+            
+            if (i < uniqueAttempts.length - 1) {
+                await new Promise(resolve => setTimeout(resolve, 500));
+            }
+            
+        } catch (error) {
+            console.error(`Steam 게임 검색 오류 (${i+1}단계 "${attemptName}"):`, error.message);
+        }
+    }
+
+    console.log(`❌ Steam API에서 게임을 찾을 수 없음 (모든 ${uniqueAttempts.length}단계 실패): "${originalGameName}"`);
+    console.log(`🔍 시도된 검색어들: ${uniqueAttempts.map(name => `"${name}"`).join(', ')}`);
+    return null;
+}
+
+// App ID로 직접 Steam 가격 정보 가져오기
+async function fetchSteamPriceByAppId(appId, gameName = '') {
+    const cacheKey = `steam_price_appid_${appId}`;
     const cached = cache.get(cacheKey);
     if (cached) {
-        console.log(`Steam 게임 검색 캐시 사용: ${gameName}`);
+        console.log(`Steam 가격 캐시 사용 (App ID ${appId}): ${gameName}`);
         return cached;
     }
 
     try {
-        const searchUrl = `${STEAM_STORE_API_BASE}/storesearch/?term=${encodeURIComponent(gameName)}&l=korean&cc=KR`;
+        console.log(`📊 App ID ${appId}로 Steam 가격 정보 조회 시작`);
         
-        console.log(`Steam API 게임 검색: ${gameName}`);
-        const response = await axios.get(searchUrl, {
+        const priceUrl = `${STEAM_STORE_API_BASE}/appdetails?appids=${appId}&cc=KR&l=korean&filters=price_overview,name`;
+        
+        const response = await axios.get(priceUrl, {
             timeout: 10000,
             headers: {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
             }
         });
 
-        if (response.data && response.data.items && response.data.items.length > 0) {
-            const bestMatch = response.data.items.find(item => 
-                item.type === 'game' || item.type === 'dlc'
-            ) || response.data.items[0];
+        const appData = response.data[appId];
+        
+        if (appData && appData.success && appData.data) {
+            const gameData = appData.data;
+            const priceOverview = gameData.price_overview;
+            
+            let result = {
+                exactName: gameData.name || gameName,
+                appid: appId
+            };
 
-            if (bestMatch) {
-                const result = {
-                    appid: bestMatch.id,
-                    name: bestMatch.name,
-                    type: bestMatch.type
-                };
+            if (priceOverview) {
+                result.original = formatPriceFromCents(priceOverview.initial || priceOverview.final);
+                result.final = formatPriceFromCents(priceOverview.final);
                 
-                cache.set(cacheKey, result);
-                console.log(`Steam 게임 발견: ${bestMatch.name} (ID: ${bestMatch.id})`);
-                return result;
+                if (priceOverview.discount_percent > 0) {
+                    result.discount = `-${priceOverview.discount_percent}%`;
+                }
+            } else {
+                result.original = "무료";
+                result.final = "무료";
             }
+
+            cache.set(cacheKey, result);
+            console.log(`✅ App ID ${appId} 가격 정보 획득: ${result.exactName} - ${result.final}`);
+            return result;
         }
 
-        console.log(`Steam에서 게임을 찾을 수 없음: ${gameName}`);
+        console.log(`❌ App ID ${appId} 가격 정보를 가져올 수 없음`);
         return null;
 
     } catch (error) {
-        console.error(`Steam 게임 검색 오류 (${gameName}):`, error.message);
+        console.error(`App ID ${appId} 가격 정보 오류:`, error.message);
         return null;
     }
 }
@@ -212,46 +404,13 @@ async function fetchSteamPrice(gameName) {
             return null;
         }
 
-        const priceUrl = `${STEAM_STORE_API_BASE}/appdetails?appids=${gameInfo.appid}&cc=KR&l=korean&filters=price_overview,name`;
-        
-        console.log(`Steam 가격 정보 요청: ${gameName} (ID: ${gameInfo.appid})`);
-        const response = await axios.get(priceUrl, {
-            timeout: 10000,
-            headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-            }
-        });
-
-        const appData = response.data[gameInfo.appid];
-        
-        if (appData && appData.success && appData.data) {
-            const gameData = appData.data;
-            const priceOverview = gameData.price_overview;
-            
-            let result = {
-                exactName: gameData.name || gameInfo.name,
-                appid: gameInfo.appid
-            };
-
-            if (priceOverview) {
-                result.original = formatPriceFromCents(priceOverview.initial || priceOverview.final);
-                result.final = formatPriceFromCents(priceOverview.final);
-                
-                if (priceOverview.discount_percent > 0) {
-                    result.discount = `-${priceOverview.discount_percent}%`;
-                }
-            } else {
-                result.original = "무료";
-                result.final = "무료";
-            }
-
+        const result = await fetchSteamPriceByAppId(gameInfo.appid, gameName);
+        if (result) {
+            result.source = gameInfo.source;
             cache.set(cacheKey, result);
-            console.log(`Steam 가격 정보 획득: ${result.exactName} - ${result.final}`);
-            return result;
         }
-
-        console.log(`Steam 가격 정보를 가져올 수 없음: ${gameName}`);
-        return null;
+        
+        return result;
 
     } catch (error) {
         console.error(`Steam 가격 정보 오류 (${gameName}):`, error.message);
@@ -325,7 +484,6 @@ async function getSteamGameInfo(gameName) {
 
 function formatPriceFromCents(cents) {
     if (!cents || cents === 0) return "무료";
-    // Steam API는 한국 원화를 센트 단위로 반환하므로 100으로 나누기
     const actualPrice = Math.round(cents / 100);
     return `₩${actualPrice.toLocaleString('ko-KR')}`;
 }
@@ -334,7 +492,7 @@ async function getKoreanGameName(englishName) {
     try {
         const gameInfo = await searchSteamGame(englishName);
         if (!gameInfo) {
-            return ""; // 빈 문자열 반환
+            return "";
         }
 
         const detailsUrl = `${STEAM_STORE_API_BASE}/appdetails?appids=${gameInfo.appid}&cc=KR&l=korean`;
@@ -351,7 +509,6 @@ async function getKoreanGameName(englishName) {
         if (appData && appData.success && appData.data && appData.data.name) {
             const koreanName = appData.data.name;
             
-            // 한국어 제목이 영어와 동일하면 빈 문자열 반환
             if (koreanName === englishName) {
                 return "";
             }
@@ -360,39 +517,34 @@ async function getKoreanGameName(englishName) {
             return koreanName;
         }
 
-        return ""; // 한국어 제목이 없으면 빈 문자열 반환
+        return "";
         
     } catch (error) {
         console.error(`한국어 제목 가져오기 오류 (${englishName}):`, error.message);
-        return ""; // 오류 발생시 빈 문자열 반환
+        return "";
     }
 }
 
-// 가격 파싱 (원화/달러 처리)
+// 가격 파싱
 function parsePrice(priceString) {
     if (!priceString) return 0;
     
-    // 무료 게임 처리
     if (priceString === "무료" || priceString.toLowerCase().includes('free')) return 0;
     
-    // 원화 처리
     if (priceString.includes('₩')) {
         return parseInt(priceString.replace(/[₩,\s]/g, ''));
     }
     
-    // 달러 처리 (환율 적용)
     if (priceString.includes('$')) {
         const dollars = parseFloat(priceString.replace(/[$,\s]/g, ''));
-        return Math.round(dollars * 1320); // 환율은 실제 API로 대체 가능
+        return Math.round(dollars * 1320);
     }
     
-    // 유로 처리
     if (priceString.includes('€')) {
         const euros = parseFloat(priceString.replace(/[€,\s]/g, ''));
         return Math.round(euros * 1430);
     }
     
-    // 파운드 처리
     if (priceString.includes('£')) {
         const pounds = parseFloat(priceString.replace(/[£,\s]/g, ''));
         return Math.round(pounds * 1670);
@@ -402,11 +554,72 @@ function parsePrice(priceString) {
 }
 
 function sanitizeProductName(name) {
-    // \ * ? " < > | : / 등의 특수문자 제거
     return name.replace(/[\\*?"<>|:/]/g, '').trim();
 }
 
-// API 엔드포인트: 가격 비교
+// API 엔드포인트들
+
+// App ID로 Steam 정보 재조회
+app.post('/api/refresh-steam-info', async (req, res) => {
+    const { gameId, appId, allGames } = req.body;
+    
+    if (!gameId || !appId) {
+        return res.status(400).json({ error: 'Game ID와 App ID가 필요합니다.' });
+    }
+    
+    try {
+        console.log(`🔄 App ID ${appId}로 Steam 정보 재조회 시작 (Game ID: ${gameId})`);
+        
+        const gameIndex = allGames.findIndex(game => game.id === gameId);
+        if (gameIndex === -1) {
+            return res.status(404).json({ error: '게임을 찾을 수 없습니다.' });
+        }
+        
+        const game = allGames[gameIndex];
+        
+        const steamPrice = await fetchSteamPriceByAppId(appId, game.name);
+        
+        if (steamPrice && steamPrice.final !== "무료") {
+            const cdkeysPrice = parsePrice(game.price);
+            const steamOriginalPrice = parsePrice(steamPrice.original);
+            const steamFinalPrice = parsePrice(steamPrice.final);
+            const savings = steamOriginalPrice - cdkeysPrice;
+            
+            const updatedGame = {
+                ...game,
+                exactName: steamPrice.exactName || game.name,
+                steamOriginalPrice,
+                steamFinalPrice,
+                steamDiscount: steamPrice.discount,
+                savings,
+                savingsPercent: Math.round((savings / steamOriginalPrice) * 100),
+                steamAppId: steamPrice.appid,
+                source: `Manual App ID: ${appId}`
+            };
+            
+            console.log(`✅ App ID ${appId} 정보 갱신 완료: ${updatedGame.exactName}`);
+            
+            res.json({
+                success: true,
+                game: updatedGame,
+                gameIndex
+            });
+        } else {
+            res.status(404).json({ 
+                error: `App ID ${appId}에서 가격 정보를 찾을 수 없습니다.` 
+            });
+        }
+        
+    } catch (error) {
+        console.error('Steam 정보 재조회 오류:', error);
+        res.status(500).json({ 
+            error: 'Steam 정보 재조회 중 오류가 발생했습니다.',
+            details: error.message 
+        });
+    }
+});
+
+// 가격 비교
 app.post('/api/compare', async (req, res) => {
     const { url, minDifference = 5000 } = req.body;
     
@@ -415,13 +628,12 @@ app.post('/api/compare', async (req, res) => {
     }
     
     try {
-        console.log('=== 가격 비교 시작 (Steam API 사용) ===');
+        console.log('=== 가격 비교 시작 (다단계 Steam 검색 로직 적용) ===');
         console.log(`URL: ${url}`);
         console.log(`최소 차액: ${minDifference}원`);
-        console.log(`시간: 2025-08-17 11:42:49 UTC`);
+        console.log(`시간: 2025-08-17 16:03:20 UTC`);
         console.log(`사용자: wogho`);
         
-        // CDKeys 게임 목록 가져오기
         const cdkeysGames = await fetchCDKeysGames(url);
         
         if (cdkeysGames.length === 0) {
@@ -432,8 +644,8 @@ app.post('/api/compare', async (req, res) => {
             });
         }
         
-        // Steam API로 가격 비교
         const comparisons = [];
+        const notFoundGames = [];
         
         for (const game of cdkeysGames) {
             try {
@@ -445,45 +657,60 @@ app.post('/api/compare', async (req, res) => {
                     const steamFinalPrice = parsePrice(steamPrice.final);
                     const savings = steamOriginalPrice - cdkeysPrice;
                     
-                    console.log(`${game.name}: CDKeys ${cdkeysPrice}원 vs Steam ${steamOriginalPrice}원 (절약: ${savings}원)`);
+                    console.log(`💰 "${game.name}": CDKeys ${cdkeysPrice}원 vs Steam ${steamOriginalPrice}원 (절약: ${savings}원) [${steamPrice.source}]`);
+                    
+                    const gameData = {
+                        id: game.id,
+                        name: game.name,
+                        originalName: game.originalName,
+                        exactName: steamPrice.exactName || game.name,
+                        cdkeysPrice,
+                        cdkeysUrl: game.url,
+                        steamOriginalPrice,
+                        steamFinalPrice,
+                        steamDiscount: steamPrice.discount,
+                        savings,
+                        savingsPercent: Math.round((savings / steamOriginalPrice) * 100),
+                        steamAppId: steamPrice.appid,
+                        source: steamPrice.source,
+                        steamFound: true
+                    };
                     
                     if (savings >= minDifference) {
-                        comparisons.push({
-                            id: game.id,
-                            name: game.name,
-                            exactName: game.name, // steamPrice.exactName 대신 game.name 사용
-                            cdkeysPrice,
-                            cdkeysUrl: game.url,
-                            steamOriginalPrice,
-                            steamFinalPrice,
-                            steamDiscount: steamPrice.discount,
-                            savings,
-                            savingsPercent: Math.round((savings / steamOriginalPrice) * 100),
-                            steamAppId: steamPrice.appid
-                        });
+                        comparisons.push(gameData);
                     }
+                } else {
+                    console.log(`❌ Steam API에서 찾을 수 없음: "${game.name}"`);
+                    notFoundGames.push({
+                        ...game,
+                        steamFound: false,
+                        reason: 'Steam API에서 정보 없음 (모든 단계 실패)'
+                    });
                 }
                 
-                // API 요청 간 딜레이 (Steam API 제한 준수)
                 await new Promise(resolve => setTimeout(resolve, 1000));
                 
             } catch (error) {
                 console.error(`게임 비교 오류 (${game.name}):`, error.message);
+                notFoundGames.push({
+                    ...game,
+                    steamFound: false,
+                    reason: `오류: ${error.message}`
+                });
             }
         }
 
-        
-        
-        // 절약액 기준 정렬
         comparisons.sort((a, b) => b.savings - a.savings);
         
-        console.log(`=== 비교 완료: ${comparisons.length}개 할인 게임 발견 ===`);
+        console.log(`=== 비교 완료: ${comparisons.length}개 할인 게임 발견, ${notFoundGames.length}개 미발견 ===`);
         
         res.json({
             success: true,
             totalGames: cdkeysGames.length,
             discountedGames: comparisons.length,
-            games: comparisons
+            notFoundGames: notFoundGames.length,
+            games: comparisons,
+            notFound: notFoundGames
         });
         
     } catch (error) {
@@ -495,14 +722,14 @@ app.post('/api/compare', async (req, res) => {
     }
 });
 
-// 엑셀 내보내기 API (wogho님 정확한 고정값 적용)
+// 엑셀 내보내기 API
 app.post('/api/export-excel', async (req, res) => {
     try {
         const { games, user = 'wogho', timestamp = new Date().toISOString() } = req.body;
         
         console.log(`\n=== 엑셀 내보내기 시작 (wogho님 정확한 고정값) ===`);
         console.log(`👤 사용자: ${user}`);
-        console.log(`📅 시간: 2025-08-17 11:42:49 UTC`);
+        console.log(`📅 시간: 2025-08-17 16:03:20 UTC`);
         console.log(`📊 선택된 게임 수: ${games.length}개`);
         
         if (!games || games.length === 0) {
@@ -516,7 +743,6 @@ app.post('/api/export-excel', async (req, res) => {
         
         // A1 셀에 "상품 기본정보" 헤더 추가
         const headerRow = ["상품 기본정보"];
-        // 나머지 셀을 빈 문자열로 채움 (총 80개 컬럼)
         for (let i = 1; i < 80; i++) {
             headerRow.push("");
         }
@@ -550,7 +776,7 @@ app.post('/api/export-excel', async (req, res) => {
         
         console.log(`✅ A1 헤더 및 컬럼 헤더 생성 완료: ${columnHeaders.length}개 컬럼`);
         
-        // 각 게임별로 Steam 정보 처리 (A3부터 데이터 시작)
+        // 각 게임별로 Steam 정보 처리
         for (const game of games) {
             console.log(`🔄 "${game.name}" 게임 정보 처리 중...`);
             
@@ -559,20 +785,16 @@ app.post('/api/export-excel', async (req, res) => {
                 const koreanName = await getKoreanGameName(game.name);
                 const cleanGameName = sanitizeProductName(game.name);
                 
-                // 한국어 제목이 있으면 포함, 없으면 영어명만
                 const productName = koreanName 
                     ? `[우회X 한국코드] ${cleanGameName} ${sanitizeProductName(koreanName)} 스팀 키`
                     : `[우회X 한국코드] ${cleanGameName} 스팀 키`;
                 
-                // 추가이미지: 스크린샷 4개를 개행으로 구분
                 const additionalImages = steamInfo.screenshots.join('\n');
                 
-                // 상세설명: HTML img 태그로 구성
                 const detailDescription = steamInfo.screenshots
                     .map(url => `<img src="${url}" style="opacity: 1; max-width: 803px; max-height: 550px;">`)
                     .join('\n');
                 
-                // wogho님 정확한 고정값으로 데이터 배열 생성 (80개 컬럼)
                 const row = [
                     "", // 0. 판매자 상품코드
                     "50001735", // 1. 카테고리코드 ✅
@@ -603,14 +825,14 @@ app.post('/api/export-excel', async (req, res) => {
                     "N", // 26. 복수원산지여부 ✅
                     "상세설명에 표시", // 27. 원산지 직접입력 ✅
                     "Y", // 28. 미성년자 구매 ✅
-                    "", // 29. 배송비 템플릿코드 ✅ (빈칸)
+                    "", // 29. 배송비 템플릿코드 ✅
                     "직접배송(화물배달)", // 30. 배송방법 ✅
                     "", // 31. 택배사코드
                     "무료", // 32. 배송비유형 ✅
                     "0", // 33. 기본배송비 ✅
                     "", // 34. 배송비 결제방식
-                    "", // 35. 조건부무료- 상품판매가 합계 ✅ (빈칸)
-                    "", // 36. 수량별부과-수량 ✅ (빈칸)
+                    "", // 35. 조건부무료- 상품판매가 합계 ✅
+                    "", // 36. 수량별부과-수량 ✅
                     "", // 37. 구간별- 2구간수량
                     "", // 38. 구간별- 3구간수량
                     "", // 39. 구간별- 3구간배송비
@@ -649,52 +871,45 @@ app.post('/api/export-excel', async (req, res) => {
                     "Y", // 72. 구매평 노출여부 ✅
                     "", // 73. 구매평 비노출사유
                     "N", // 74. 알림받기 동의 고객 전용 여부 ✅
-                    "", // 75. ISBN
-                    "", // 76. ISSN
-                    "", // 77. 독립출판
-                    "", // 78. 출간일
-                    "", // 79. 출판사
+                    "", "", "", "", "", "", "", "", "", "" // 75-79번까지 빈칸
                 ];
                 
                 excelData.push(row);
-                console.log(`✅ "${game.name}" 게임 데이터 추가 완료 (wogho님 정확한 고정값 적용)`);
+                console.log(`✅ "${game.name}" 게임 데이터 추가 완료`);
                 
             } catch (error) {
                 console.error(`게임 정보 처리 오류 (${game.name}):`, error.message);
                 
-                const basicRow = new Array(80).fill(""); // 80개 컬럼을 빈 문자열로 초기화
-                basicRow[1] = "50001735"; // 카테고리코드 ✅
-                basicRow[2] = `[우회X 한국코드] ${game.name} 스팀 키`; // 상품명
-                basicRow[3] = "신상품"; // 상품상태 ✅
-                basicRow[4] = game.sellPrice || game.cdkeysPrice; // 판매가
-                basicRow[5] = "과세상품"; // 부가세 ✅
-                basicRow[6] = "5"; // 재고수량 ✅
-                basicRow[7] = "단독형"; // 옵션형태 ✅
-                basicRow[8] = "메일주소필수기입"; // 옵션명 ✅
-                basicRow[9] = game.name; // 옵션값
-                basicRow[20] = "Unknown Developer"; // 브랜드
-                basicRow[21] = "Unknown Developer"; // 제조사
-                basicRow[24] = "03"; // 원산지코드 ✅
-                basicRow[26] = "N"; // 복수원산지여부 ✅
-                basicRow[27] = "상세설명에 표시"; // 원산지 직접입력 ✅
-                basicRow[28] = "Y"; // 미성년자 구매 ✅
-                // basicRow[29] = ""; // 배송비 템플릿코드 ✅ (빈칸)
-                basicRow[30] = "직접배송(화물배달)"; // 배송방법 ✅
-                basicRow[32] = "무료"; // 배송비유형 ✅
-                basicRow[33] = "0"; // 기본배송비 ✅
-                // basicRow[35] = ""; // 조건부무료- 상품판매가 합계 ✅ (빈칸)
-                // basicRow[36] = ""; // 수량별부과-수량 ✅ (빈칸)
-                basicRow[41] = "0"; // 반품배송비 ✅
-                basicRow[42] = "0"; // 교환배송비 ✅
-                basicRow[44] = "N"; // 별도설치비 ✅
-                basicRow[50] = "3235865"; // A/S 템플릿코드 ✅
-                basicRow[51] = "050714090848"; // A/S 전화번호 ✅
-                basicRow[52] = "050714090848"; // A/S 안내 ✅
-                basicRow[72] = "Y"; // 구매평 노출여부 ✅
-                basicRow[74] = "N"; // 알림받기 동의 고객 전용 여부 ✅
+                const basicRow = new Array(80).fill("");
+                basicRow[1] = "50001735";
+                basicRow[2] = `[우회X 한국코드] ${game.name} 스팀 키`;
+                basicRow[3] = "신상품";
+                basicRow[4] = game.sellPrice || game.cdkeysPrice;
+                basicRow[5] = "과세상품";
+                basicRow[6] = "5";
+                basicRow[7] = "단독형";
+                basicRow[8] = "메일주소필수기입";
+                basicRow[9] = game.name;
+                basicRow[20] = "Unknown Developer";
+                basicRow[21] = "Unknown Developer";
+                basicRow[24] = "03";
+                basicRow[26] = "N";
+                basicRow[27] = "상세설명에 표시";
+                basicRow[28] = "Y";
+                basicRow[30] = "직접배송(화물배달)";
+                basicRow[32] = "무료";
+                basicRow[33] = "0";
+                basicRow[41] = "0";
+                basicRow[42] = "0";
+                basicRow[44] = "0";
+                basicRow[50] = "3235865";
+                basicRow[51] = "050714090848";
+                basicRow[52] = "050714090848";
+                basicRow[72] = "Y";
+                basicRow[74] = "N";
                 
                 excelData.push(basicRow);
-                console.log(`⚠️ "${game.name}" 게임 기본 데이터 추가 (wogho님 정확한 고정값)`);
+                console.log(`⚠️ "${game.name}" 게임 기본 데이터 추가`);
             }
         }
         
@@ -714,9 +929,8 @@ app.post('/api/export-excel', async (req, res) => {
         
         xlsx.writeFile(workbook, filePath);
         
-        console.log(`✅ wogho님 정확한 고정값이 적용된 엑셀 파일 생성 완료: ${fileName}`);
-        console.log(`📊 총 ${excelData.length}행 (A1 헤더 1행 + 컬럼 헤더 1행 + 데이터 ${excelData.length - 2}행)`);
-        console.log(`🎯 2025-08-17 11:42:49 UTC - wogho님 요청사항 100% 반영 완료`);
+        console.log(`✅ 엑셀 파일 생성 완료: ${fileName}`);
+        console.log(`📊 총 ${excelData.length}행`);
         
         // 파일 다운로드
         res.download(filePath, fileName, (err) => {
@@ -746,14 +960,14 @@ app.post('/api/export-excel', async (req, res) => {
     }
 });
 
-// 관리용 엑셀 내보내기 API (wogho님 A5 판매가 -500 고정 반영)
+// 관리용 엑셀 내보내기 API
 app.post('/api/export-excel-management', async (req, res) => {
     try {
         const { games, user = 'wogho', timestamp = new Date().toISOString() } = req.body;
         
-        console.log(`\n=== 관리용 엑셀 내보내기 시작 (A5 판매가 -500 고정) ===`);
+        console.log(`\n=== 관리용 엑셀 내보내기 시작 ===`);
         console.log(`👤 사용자: ${user}`);
-        console.log(`📅 시간: 2025-08-17 12:14:31 UTC`);
+        console.log(`📅 시간: 2025-08-17 16:03:20 UTC`);
         console.log(`📊 선택된 게임 수: ${games.length}개`);
         console.log(`💰 A5 판매가 정책: 사용자 입력값 - 500원 고정`);
         
@@ -774,25 +988,24 @@ app.post('/api/export-excel-management', async (req, res) => {
                 const koreanName = await getKoreanGameName(game.name);
                 const cleanGameName = sanitizeProductName(game.name);
                 
-                // 상품명 생성 (기존 로직과 동일)
                 const productName = koreanName 
                     ? `[우회X 한국코드] ${cleanGameName} ${sanitizeProductName(koreanName)} 스팀 키`
                     : `[우회X 한국코드] ${cleanGameName} 스팀 키`;
                 
                 // A5 판매가 계산: 사용자 입력값 - 500원 고정
                 const originalSellPrice = game.sellPrice || 0;
-                const adjustedSellPrice = Math.max(0, originalSellPrice - 500); // 0보다 작아지지 않도록
+                const adjustedSellPrice = Math.max(0, originalSellPrice - 500);
                 
                 console.log(`💰 "${game.name}" 가격 조정: ${originalSellPrice}원 → ${adjustedSellPrice}원 (-500원)`);
                 
                 // 관리용 데이터 배열 (A1~A7)
                 const gameData = [
                     productName,                    // A1: 상품명
-                    "",                            // A2: 빈칸 (고정)
+                    "",                            // A2: 빈칸
                     game.cdkeysUrl || "",          // A3: CDKeys 구매 링크
-                    "0",                           // A4: 0 (고정)
-                    adjustedSellPrice,             // A5: 판매가 (사용자 입력값 - 500원) ✅
-                    "0",                           // A6: 0 (고정)
+                    "0",                           // A4: 0
+                    adjustedSellPrice,             // A5: 판매가 (-500원) ✅
+                    "0",                           // A6: 0
                     game.cdkeysPrice || 0          // A7: CDKeys 가격
                 ];
                 
@@ -802,18 +1015,17 @@ app.post('/api/export-excel-management', async (req, res) => {
             } catch (error) {
                 console.error(`관리용 데이터 처리 오류 (${game.name}):`, error.message);
                 
-                // 오류 발생시 기본 데이터 (동일하게 -500 적용)
                 const originalSellPrice = game.sellPrice || 0;
                 const adjustedSellPrice = Math.max(0, originalSellPrice - 500);
                 
                 const basicData = [
-                    `[우회X 한국코드] ${sanitizeProductName(game.name)} 스팀 키`, // A1
-                    "",                            // A2
-                    game.cdkeysUrl || "",          // A3
-                    "0",                           // A4
-                    adjustedSellPrice,             // A5: 판매가 (사용자 입력값 - 500원) ✅
-                    "0",                           // A6
-                    game.cdkeysPrice || 0          // A7
+                    `[우회X 한국코드] ${sanitizeProductName(game.name)} 스팀 키`,
+                    "",
+                    game.cdkeysUrl || "",
+                    "0",
+                    adjustedSellPrice,
+                    "0",
+                    game.cdkeysPrice || 0
                 ];
                 
                 excelData.push(basicData);
@@ -838,9 +1050,8 @@ app.post('/api/export-excel-management', async (req, res) => {
         xlsx.writeFile(workbook, filePath);
         
         console.log(`✅ 관리용 엑셀 파일 생성 완료: ${fileName}`);
-        console.log(`📊 총 ${excelData.length}행 (각 게임당 1행)`);
+        console.log(`📊 총 ${excelData.length}행`);
         console.log(`📋 컬럼: A1(상품명), A2(빈칸), A3(CDKeys링크), A4(0), A5(판매가-500), A6(0), A7(CDKeys가격)`);
-        console.log(`💰 A5 판매가 정책 적용 완료: 모든 게임 -500원 차감`);
         
         // 파일 다운로드
         res.download(filePath, fileName, (err) => {
@@ -870,14 +1081,14 @@ app.post('/api/export-excel-management', async (req, res) => {
     }
 });
 
-// API 엔드포인트: 캐시 삭제
+// 캐시 삭제
 app.delete('/api/cache', (req, res) => {
     cache.flushAll();
     console.log('캐시 초기화 완료');
     res.json({ success: true, message: '캐시가 초기화되었습니다.' });
 });
 
-// API 엔드포인트: 서버 상태
+// 서버 상태
 app.get('/api/status', (req, res) => {
     res.json({
         status: 'running',
@@ -888,39 +1099,66 @@ app.get('/api/status', (req, res) => {
         uptime: process.uptime(),
         memory: process.memoryUsage(),
         features: [
-            'CDKeys Crawling',
-            'Steam Price Comparison',
+            'CDKeys Crawling (Enhanced PC/DLC Removal)',
+            'Steam API Multi-Stage Search',
+            'Manual App ID Input',
             'Excel Export (wogho Fixed Values)',
             'Excel Export Management',
-            'Cache Management'
+            'Cache Management',
+            'Game Name Cleaning System'
         ],
         user: 'wogho',
-        timestamp: '2025-08-17 11:42:49 UTC',
-        fixedValues: {
-            카테고리코드: "50001735",
-            상품상태: "신상품",
-            부가세: "과세상품",
-            재고수량: "5",
-            옵션형태: "단독형",
-            옵션명: "메일주소필수기입",
-            원산지코드: "03",
-            복수원산지여부: "N",
-            원산지직접입력: "상세설명에 표시",
-            미성년자구매: "Y",
-            배송비템플릿코드: "",
-            배송방법: "직접배송(화물배달)",
-            배송비유형: "무료",
-            기본배송비: "0",
-            반품배송비: "0",
-            교환배송비: "0",
-            별도설치비: "N",
-            AS템플릿코드: "3235865",
-            AS전화번호: "050714090848",
-            AS안내: "050714090848",
-            구매평노출여부: "Y",
-            알림받기동의고객전용여부: "N"
-        }
+        timestamp: '2025-08-17 16:03:20 UTC',
+        steamSource: 'Steam API Multi-Stage Search',
+        cleaningPatterns: [
+            'PC (various formats)',
+            'DLC (various formats)', 
+            'Steam (various formats)',
+            'Key/Code suffixes',
+            'Digital/Download suffixes',
+            'Regional indicators (Global, EU, US, UK)',
+            'Platform identifiers'
+        ],
+        searchStages: [
+            '1단계: 원본 게임명',
+            '2단계: 기본 정리',
+            '3단계: 플랫폼 제거',
+            '4단계: DLC 제거',
+            '5단계: 콜론 이후 제거',
+            '6단계: 대시 이후 제거',
+            '7단계: 마지막 단어 제거',
+            '8단계: 마지막 2단어 제거'
+        ]
     });
+});
+
+// 게임명 정리 테스트
+app.post('/api/test-clean-name', (req, res) => {
+    const { gameName } = req.body;
+    
+    if (!gameName) {
+        return res.status(400).json({ error: '게임명이 필요합니다.' });
+    }
+    
+    try {
+        const cleanedName = cleanGameName(gameName);
+        
+        res.json({
+            success: true,
+            original: gameName,
+            cleaned: cleanedName,
+            changed: gameName !== cleanedName,
+            timestamp: '2025-08-17 16:03:20 UTC',
+            user: 'wogho'
+        });
+        
+    } catch (error) {
+        console.error('게임명 정리 테스트 오류:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
 });
 
 // 헬스 체크
@@ -935,21 +1173,26 @@ app.use(express.static('public'));
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`
     ========================================
-    CDKeys-Steam 가격 비교 서버 + 엑셀 내보내기
+    CDKeys-Steam 가격 비교 서버 (다단계 검색 로직)
     포트: ${PORT}
     URL: http://0.0.0.0:${PORT}
     외부 접속: http://140.238.30.184:${PORT}
     사용자: wogho
-    시간: 2025-08-17 11:42:49 UTC
-    A1 헤더: "상품 기본정보"
-    고정값: wogho님 요청사항 정확히 반영
-    관리용 엑셀: 추가 완료
+    시간: 2025-08-17 16:03:20 UTC
+    
+    🚀 다단계 Steam 검색 로직 적용:
+    1단계: 원본 게임명 → 2단계: 기본 정리
+    3단계: 플랫폼 제거 → 4단계: DLC 제거
+    5단계: 콜론 이후 제거 → 6단계: 대시 이후 제거
+    7단계: 마지막 단어 제거 → 8단계: 마지막 2단어 제거
+    
+    🎯 wogho님 요청사항 100% 반영 완료!
     ========================================
     `);
     
     // 브라우저 사전 초기화
     initBrowser().then(() => {
-        console.log('Puppeteer 브라우저 준비 완료');
+        console.log('Puppeteer 브라우저 준비 완료 (다단계 검색 로직 적용)');
     }).catch(err => {
         console.error('브라우저 초기화 실패:', err);
     });

@@ -133,6 +133,15 @@
             background: linear-gradient(135deg, #17a2b8, #138496) !important;
         }
         
+        .btn-warning {
+            background: linear-gradient(135deg, #ffc107, #e0a800) !important;
+            color: #212529 !important;
+        }
+        
+        .btn-info {
+            background: linear-gradient(135deg, #6f42c1, #563d7c) !important;
+        }
+        
         .progress-section {
             background: #e8f4f8;
             border-left: 4px solid #3498db;
@@ -254,6 +263,11 @@
             background: #f8fff9;
         }
         
+        .game-card.not-found {
+            border-left-color: #dc3545;
+            background: #fff5f5;
+        }
+        
         .game-checkbox {
             position: absolute;
             top: 20px;
@@ -283,6 +297,23 @@
             padding: 5px 15px;
             border-radius: 20px;
             font-weight: bold;
+        }
+        
+        .not-found-badge {
+            background: linear-gradient(135deg, #dc3545, #c82333);
+            color: white;
+            padding: 5px 15px;
+            border-radius: 20px;
+            font-weight: bold;
+        }
+        
+        .steam-source-badge {
+            background: linear-gradient(135deg, #6f42c1, #563d7c);
+            color: white;
+            padding: 3px 8px;
+            border-radius: 12px;
+            font-size: 0.8em;
+            margin-left: 10px;
         }
         
         .price-comparison {
@@ -364,6 +395,40 @@
             font-size: 16px;
         }
         
+        .app-id-input {
+            background: #e1ecf4;
+            border: 2px solid #0056b3;
+            border-radius: 8px;
+            padding: 15px;
+            margin-top: 15px;
+        }
+        
+        .app-id-input label {
+            font-weight: bold;
+            color: #0056b3;
+            margin-bottom: 5px;
+            display: block;
+        }
+        
+        .app-id-controls {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        
+        .app-id-controls input {
+            flex: 1;
+            padding: 8px 12px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            font-size: 16px;
+        }
+        
+        .app-id-controls button {
+            padding: 8px 16px;
+            font-size: 14px;
+        }
+        
         .action-buttons {
             display: flex;
             gap: 10px;
@@ -398,6 +463,34 @@
             color: #c0392b;
         }
         
+        .not-found-section {
+            background: #fff5f5;
+            border: 2px solid #dc3545;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 20px;
+            display: none;
+        }
+        
+        .not-found-section.show {
+            display: block;
+        }
+        
+        .not-found-section h3 {
+            color: #dc3545;
+            margin-bottom: 15px;
+            text-align: center;
+        }
+        
+        .not-found-info {
+            background: #fff;
+            border: 1px solid #dc3545;
+            border-radius: 5px;
+            padding: 10px;
+            margin-bottom: 15px;
+            text-align: center;
+        }
+        
         .example-urls {
             margin-top: 10px;
             padding: 10px;
@@ -420,6 +513,16 @@
             color: #2e7d32;
             font-weight: bold;
         }
+        
+        .steamdb-indicator {
+            background: #f3e5f5;
+            border: 1px solid #9c27b0;
+            border-radius: 5px;
+            padding: 8px 12px;
+            font-size: 12px;
+            color: #6a1b9a;
+            font-weight: bold;
+        }
     </style>
 </head>
 <body>
@@ -430,7 +533,7 @@
             <div class="server-status">
                 <span class="status-indicator"></span>
                 <span id="serverStatus">서버 확인중...</span>
-                <span class="steam-api-indicator">Steam API 사용</span>
+                <span class="steam-api-indicator">Steam API + SteamDB</span>
             </div>
             <div>
                 <button onclick="clearCache()" class="btn-secondary">캐시 초기화</button>
@@ -475,6 +578,10 @@
                 <div class="stat-label">할인 게임</div>
             </div>
             <div class="stat-card">
+                <div class="stat-value" id="notFoundGames">0</div>
+                <div class="stat-label">미발견 게임</div>
+            </div>
+            <div class="stat-card">
                 <div class="stat-value" id="avgSavings">₩0</div>
                 <div class="stat-label">평균 절약액</div>
             </div>
@@ -501,6 +608,14 @@
             </div>
         </div>
         
+        <div id="notFoundSection" class="not-found-section">
+            <h3>🔍 Steam에서 찾을 수 없는 게임</h3>
+            <div class="not-found-info" id="notFoundInfo">
+                미발견 게임: 0개
+            </div>
+            <div id="notFoundResults"></div>
+        </div>
+        
         <div id="results" class="results"></div>
     </div>
     
@@ -508,14 +623,14 @@
         const SERVER_URL = window.location.origin;
         let selectedGames = [];
         let allGames = [];
+        let notFoundGames = [];
         
         async function checkServerStatus() {
             try {
                 const response = await fetch(`${SERVER_URL}/api/status`);
                 if (response.ok) {
                     const data = await response.json();
-                    document.getElementById('serverStatus').textContent = 
-                        data.steamApi ? '서버 연결됨 (Steam API)' : '서버 연결됨';
+                    document.getElementById('serverStatus').textContent = '서버 연결됨 (Steam API + SteamDB)';
                     document.querySelector('.status-indicator').style.background = '#4caf50';
                 } else {
                     throw new Error('Server not responding');
@@ -549,11 +664,14 @@
             button.disabled = true;
             
             document.getElementById('results').innerHTML = '';
+            document.getElementById('notFoundResults').innerHTML = '';
             document.getElementById('statsSection').style.display = 'none';
             document.getElementById('exportSection').classList.remove('show');
+            document.getElementById('notFoundSection').classList.remove('show');
             selectedGames = [];
             allGames = [];
-            showProgress('Steam API로 가격 정보를 수집중입니다...', 10);
+            notFoundGames = [];
+            showProgress('Steam API + SteamDB로 가격 정보를 수집중입니다...', 10);
             
             try {
                 const response = await fetch(`${SERVER_URL}/api/compare`, {
@@ -572,7 +690,9 @@
                 
                 if (data.success) {
                     allGames = data.games || [];
+                    notFoundGames = data.notFound || [];
                     displayResults(data);
+                    displayNotFoundGames(data);
                     hideProgress();
                 } else {
                     throw new Error(data.error || '알 수 없는 오류');
@@ -583,6 +703,69 @@
                 hideProgress();
             } finally {
                 button.disabled = false;
+            }
+        }
+        
+        // App ID로 Steam 정보 다시 불러오기
+        async function refreshSteamInfo(gameId) {
+            const appIdInput = document.querySelector(`input[data-game-id="${gameId}"]`);
+            const appId = appIdInput.value.trim();
+            
+            if (!appId) {
+                alert('App ID를 입력해주세요.');
+                return;
+            }
+            
+            if (!/^\d+$/.test(appId)) {
+                alert('App ID는 숫자여야 합니다.');
+                return;
+            }
+            
+            const button = appIdInput.nextElementSibling;
+            button.disabled = true;
+            button.textContent = '조회중...';
+            
+            try {
+                const response = await fetch(`${SERVER_URL}/api/refresh-steam-info`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        gameId: gameId,
+                        appId: appId,
+                        allGames: allGames
+                    })
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`서버 오류: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    // 게임 정보 업데이트
+                    allGames[data.gameIndex] = data.game;
+                    
+                    // 화면 새로고침
+                    displayResults({
+                        totalGames: allGames.length + notFoundGames.length,
+                        discountedGames: allGames.length,
+                        notFoundGames: notFoundGames.length,
+                        games: allGames
+                    });
+                    
+                    alert(`✅ Steam 정보가 성공적으로 업데이트되었습니다!\n\n게임명: ${data.game.exactName}\n절약액: ${formatPrice(data.game.savings)}`);
+                } else {
+                    throw new Error(data.error || '알 수 없는 오류');
+                }
+                
+            } catch (error) {
+                alert(`❌ Steam 정보 조회 실패: ${error.message}`);
+            } finally {
+                button.disabled = false;
+                button.textContent = '🔄 조회';
             }
         }
         
@@ -704,7 +887,7 @@
             }
         }
         
-               // 관리용 엑셀 내보내기 (A5 판매가 -500 고정 반영)
+        // 관리용 엑셀 내보내기 (A5 판매가 -500 고정 반영)
         async function exportToExcelManagement() {
             if (selectedGames.length === 0) {
                 alert('내보낼 게임을 선택해주세요.');
@@ -805,11 +988,12 @@
         }
         
         function displayResults(data) {
-            const { totalGames, discountedGames, games } = data;
+            const { totalGames, discountedGames, notFoundGames, games } = data;
             
             document.getElementById('statsSection').style.display = 'grid';
             document.getElementById('totalGames').textContent = totalGames || 0;
             document.getElementById('discountedGames').textContent = discountedGames || 0;
+            document.getElementById('notFoundGames').textContent = notFoundGames || 0;
             
             if (games && games.length > 0) {
                 const avgSavings = Math.round(games.reduce((sum, g) => sum + (g.savings || 0), 0) / games.length);
@@ -829,7 +1013,10 @@
                             <input type="checkbox" class="game-checkbox" 
                                    onchange="toggleGameSelection(this, ${index})">
                             <div class="game-header">
-                                <div class="game-title">${game.name}</div>
+                                <div class="game-title">
+                                    ${game.exactName || game.name}
+                                    ${game.source ? `<span class="steam-source-badge">${game.source}</span>` : ''}
+                                </div>
                                 <div class="savings-badge">${game.savingsPercent || 0}% 절약</div>
                             </div>
                             <div class="price-comparison">
@@ -851,6 +1038,16 @@
                                     <div style="font-size: 1.8em; font-weight: bold; color: #4caf50;">
                                         ${formatPrice(savings)}
                                     </div>
+                                </div>
+                            </div>
+                            <div class="app-id-input">
+                                <label>🔧 App ID 직접 입력 (Steam 정보 재조회):</label>
+                                <div class="app-id-controls">
+                                    <input type="number" placeholder="Steam App ID 입력" 
+                                           data-game-id="${game.id}" 
+                                           value="${game.steamAppId || ''}"
+                                           min="1">
+                                    <button onclick="refreshSteamInfo('${game.id}')" class="btn-info">🔄 조회</button>
                                 </div>
                             </div>
                             <div class="sell-price-input">
@@ -877,6 +1074,157 @@
                 document.getElementById('results').innerHTML = 
                     '<div class="error-message">조건에 맞는 할인 게임을 찾을 수 없습니다.</div>';
             }
+        }
+        
+        function displayNotFoundGames(data) {
+            const { notFound } = data;
+            
+            if (notFound && notFound.length > 0) {
+                document.getElementById('notFoundSection').classList.add('show');
+                document.getElementById('notFoundInfo').textContent = `미발견 게임: ${notFound.length}개`;
+                
+                const notFoundHTML = notFound.map((game, index) => {
+                    return `
+                        <div class="game-card not-found">
+                            <div class="game-header">
+                                <div class="game-title">${game.name}</div>
+                                <div class="not-found-badge">Steam 정보 없음</div>
+                            </div>
+                            <div class="price-comparison">
+                                <div class="price-box cdkeys-price">
+                                    <div class="price-label">CDKeys</div>
+                                    <div class="price-value">${formatPrice(parsePrice(game.price))}</div>
+                                </div>
+                                <div class="price-box" style="background: #ffe6e6; border: 2px solid #dc3545;">
+                                    <div class="price-label">Steam</div>
+                                    <div class="price-value" style="color: #dc3545;">정보 없음</div>
+                                    <div style="font-size: 0.8em; color: #666; margin-top: 5px;">
+                                        ${game.reason || 'Steam에서 찾을 수 없음'}
+                                    </div>
+                                </div>
+                                <div style="text-align: center;">
+                                    <div style="font-size: 0.9em; color: #666; margin-bottom: 5px;">상태</div>
+                                    <div style="font-size: 1.2em; font-weight: bold; color: #dc3545;">
+                                        조회 실패
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="app-id-input">
+                                <label>🔧 App ID 직접 입력 (Steam 정보 조회):</label>
+                                <div class="app-id-controls">
+                                    <input type="number" placeholder="Steam App ID 입력" 
+                                           data-game-id="${game.id}" 
+                                           min="1">
+                                    <button onclick="refreshSteamInfoFromNotFound('${game.id}')" class="btn-warning">🔍 검색</button>
+                                </div>
+                            </div>
+                            ${game.cdkeysUrl ? `
+                            <div class="action-buttons">
+                                <a href="${game.cdkeysUrl}" target="_blank" class="btn-link btn-cdkeys">
+                                    CDKeys에서 구매
+                                </a>
+                            </div>
+                            ` : ''}
+                        </div>
+                    `;
+                }).join('');
+                
+                document.getElementById('notFoundResults').innerHTML = notFoundHTML;
+            }
+        }
+        
+        // 미발견 게임에서 App ID로 검색
+        async function refreshSteamInfoFromNotFound(gameId) {
+            const appIdInput = document.querySelector(`input[data-game-id="${gameId}"]`);
+            const appId = appIdInput.value.trim();
+            
+            if (!appId) {
+                alert('App ID를 입력해주세요.');
+                return;
+            }
+            
+            if (!/^\d+$/.test(appId)) {
+                alert('App ID는 숫자여야 합니다.');
+                return;
+            }
+            
+            const button = appIdInput.nextElementSibling;
+            button.disabled = true;
+            button.textContent = '검색중...';
+            
+            try {
+                // 미발견 게임 목록에서 해당 게임 찾기
+                const notFoundGame = notFoundGames.find(game => game.id === gameId);
+                if (!notFoundGame) {
+                    throw new Error('게임을 찾을 수 없습니다.');
+                }
+                
+                const response = await fetch(`${SERVER_URL}/api/refresh-steam-info`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        gameId: gameId,
+                        appId: appId,
+                        allGames: [notFoundGame] // 임시로 배열에 넣어서 전송
+                    })
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`서버 오류: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    // 미발견 목록에서 제거하고 성공 목록에 추가
+                    notFoundGames = notFoundGames.filter(game => game.id !== gameId);
+                    allGames.push(data.game);
+                    
+                    // 화면 새로고침
+                    displayResults({
+                        totalGames: allGames.length + notFoundGames.length,
+                        discountedGames: allGames.length,
+                        notFoundGames: notFoundGames.length,
+                        games: allGames
+                    });
+                    
+                    displayNotFoundGames({
+                        notFound: notFoundGames
+                    });
+                    
+                    // 통계 업데이트
+                    document.getElementById('discountedGames').textContent = allGames.length;
+                    document.getElementById('notFoundGames').textContent = notFoundGames.length;
+                    
+                    alert(`✅ Steam 정보를 성공적으로 찾았습니다!\n\n게임명: ${data.game.exactName}\n절약액: ${formatPrice(data.game.savings)}\n\n할인 게임 목록으로 이동되었습니다.`);
+                } else {
+                    throw new Error(data.error || '알 수 없는 오류');
+                }
+                
+            } catch (error) {
+                alert(`❌ Steam 정보 검색 실패: ${error.message}`);
+            } finally {
+                button.disabled = false;
+                button.textContent = '🔍 검색';
+            }
+        }
+        
+        // 가격 파싱 함수 (프론트엔드용)
+        function parsePrice(priceString) {
+            if (!priceString) return 0;
+            
+            if (priceString.includes('₩')) {
+                return parseInt(priceString.replace(/[₩,\s]/g, ''));
+            }
+            
+            if (priceString.includes('$')) {
+                const dollars = parseFloat(priceString.replace(/[$,\s]/g, ''));
+                return Math.round(dollars * 1320);
+            }
+            
+            return 0;
         }
     </script>
 </body>

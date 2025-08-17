@@ -686,7 +686,7 @@ app.post('/api/export-excel', async (req, res) => {
                 // basicRow[36] = ""; // 수량별부과-수량 ✅ (빈칸)
                 basicRow[41] = "0"; // 반품배송비 ✅
                 basicRow[42] = "0"; // 교환배송비 ✅
-                basicRow[44] = "0"; // 별도설치비 ✅
+                basicRow[44] = "N"; // 별도설치비 ✅
                 basicRow[50] = "3235865"; // A/S 템플릿코드 ✅
                 basicRow[51] = "050714090848"; // A/S 전화번호 ✅
                 basicRow[52] = "050714090848"; // A/S 안내 ✅
@@ -746,15 +746,16 @@ app.post('/api/export-excel', async (req, res) => {
     }
 });
 
-// 관리용 엑셀 내보내기 API
+// 관리용 엑셀 내보내기 API (wogho님 A5 판매가 -500 고정 반영)
 app.post('/api/export-excel-management', async (req, res) => {
     try {
         const { games, user = 'wogho', timestamp = new Date().toISOString() } = req.body;
         
-        console.log(`\n=== 관리용 엑셀 내보내기 시작 ===`);
+        console.log(`\n=== 관리용 엑셀 내보내기 시작 (A5 판매가 -500 고정) ===`);
         console.log(`👤 사용자: ${user}`);
-        console.log(`📅 시간: 2025-08-17 11:42:49 UTC`);
+        console.log(`📅 시간: 2025-08-17 12:14:31 UTC`);
         console.log(`📊 선택된 게임 수: ${games.length}개`);
+        console.log(`💰 A5 판매가 정책: 사용자 입력값 - 500원 고정`);
         
         if (!games || games.length === 0) {
             return res.status(400).json({
@@ -778,36 +779,45 @@ app.post('/api/export-excel-management', async (req, res) => {
                     ? `[우회X 한국코드] ${cleanGameName} ${sanitizeProductName(koreanName)} 스팀 키`
                     : `[우회X 한국코드] ${cleanGameName} 스팀 키`;
                 
+                // A5 판매가 계산: 사용자 입력값 - 500원 고정
+                const originalSellPrice = game.sellPrice || 0;
+                const adjustedSellPrice = Math.max(0, originalSellPrice - 500); // 0보다 작아지지 않도록
+                
+                console.log(`💰 "${game.name}" 가격 조정: ${originalSellPrice}원 → ${adjustedSellPrice}원 (-500원)`);
+                
                 // 관리용 데이터 배열 (A1~A7)
                 const gameData = [
                     productName,                    // A1: 상품명
                     "",                            // A2: 빈칸 (고정)
                     game.cdkeysUrl || "",          // A3: CDKeys 구매 링크
                     "0",                           // A4: 0 (고정)
-                    game.sellPrice || 0,           // A5: 판매가 설정값
+                    adjustedSellPrice,             // A5: 판매가 (사용자 입력값 - 500원) ✅
                     "0",                           // A6: 0 (고정)
                     game.cdkeysPrice || 0          // A7: CDKeys 가격
                 ];
                 
                 excelData.push(gameData);
-                console.log(`✅ "${game.name}" 관리용 데이터 추가 완료`);
+                console.log(`✅ "${game.name}" 관리용 데이터 추가 완료 (A5: ${adjustedSellPrice}원)`);
                 
             } catch (error) {
                 console.error(`관리용 데이터 처리 오류 (${game.name}):`, error.message);
                 
-                // 오류 발생시 기본 데이터
+                // 오류 발생시 기본 데이터 (동일하게 -500 적용)
+                const originalSellPrice = game.sellPrice || 0;
+                const adjustedSellPrice = Math.max(0, originalSellPrice - 500);
+                
                 const basicData = [
                     `[우회X 한국코드] ${sanitizeProductName(game.name)} 스팀 키`, // A1
                     "",                            // A2
                     game.cdkeysUrl || "",          // A3
                     "0",                           // A4
-                    game.sellPrice || 0,           // A5
+                    adjustedSellPrice,             // A5: 판매가 (사용자 입력값 - 500원) ✅
                     "0",                           // A6
                     game.cdkeysPrice || 0          // A7
                 ];
                 
                 excelData.push(basicData);
-                console.log(`⚠️ "${game.name}" 기본 관리용 데이터 추가`);
+                console.log(`⚠️ "${game.name}" 기본 관리용 데이터 추가 (A5: ${adjustedSellPrice}원)`);
             }
         }
         
@@ -829,7 +839,8 @@ app.post('/api/export-excel-management', async (req, res) => {
         
         console.log(`✅ 관리용 엑셀 파일 생성 완료: ${fileName}`);
         console.log(`📊 총 ${excelData.length}행 (각 게임당 1행)`);
-        console.log(`📋 컬럼: A1(상품명), A2(빈칸), A3(CDKeys링크), A4(0), A5(판매가), A6(0), A7(CDKeys가격)`);
+        console.log(`📋 컬럼: A1(상품명), A2(빈칸), A3(CDKeys링크), A4(0), A5(판매가-500), A6(0), A7(CDKeys가격)`);
+        console.log(`💰 A5 판매가 정책 적용 완료: 모든 게임 -500원 차감`);
         
         // 파일 다운로드
         res.download(filePath, fileName, (err) => {
@@ -902,7 +913,7 @@ app.get('/api/status', (req, res) => {
             기본배송비: "0",
             반품배송비: "0",
             교환배송비: "0",
-            별도설치비: "0",
+            별도설치비: "N",
             AS템플릿코드: "3235865",
             AS전화번호: "050714090848",
             AS안내: "050714090848",

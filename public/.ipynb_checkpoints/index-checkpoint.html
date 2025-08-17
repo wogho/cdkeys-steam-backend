@@ -704,7 +704,7 @@
             }
         }
         
-        // 관리용 엑셀 내보내기
+               // 관리용 엑셀 내보내기 (A5 판매가 -500 고정 반영)
         async function exportToExcelManagement() {
             if (selectedGames.length === 0) {
                 alert('내보낼 게임을 선택해주세요.');
@@ -718,7 +718,12 @@
                 return;
             }
             
-            showProgress('관리용 엑셀 파일을 생성하고 있습니다...', 50);
+            // 사용자에게 -500원 차감 정책 안내
+            if (!confirm('관리용 엑셀에서는 A5 판매가에서 자동으로 500원이 차감됩니다.\n\n예시: 입력값 35,000원 → 엑셀 34,500원\n\n계속 진행하시겠습니까?')) {
+                return;
+            }
+            
+            showProgress('관리용 엑셀 파일을 생성하고 있습니다... (A5 판매가 -500원 적용)', 50);
             
             try {
                 const response = await fetch(`${SERVER_URL}/api/export-excel-management`, {
@@ -749,7 +754,7 @@
                 window.URL.revokeObjectURL(url);
                 
                 hideProgress();
-                alert('✅ 관리용 엑셀 파일이 성공적으로 다운로드되었습니다!\n\n파일 구조:\nA1: 상품명\nA2: 빈칸\nA3: CDKeys 링크\nA4: 0\nA5: 판매가\nA6: 0\nA7: CDKeys 가격');
+                alert('✅ 관리용 엑셀 파일이 성공적으로 다운로드되었습니다!\n\n파일 구조:\nA1: 상품명\nA2: 빈칸\nA3: CDKeys 링크\nA4: 0\nA5: 판매가 (입력값 -500원) 💰\nA6: 0\nA7: CDKeys 가격');
                 
             } catch (error) {
                 hideProgress();

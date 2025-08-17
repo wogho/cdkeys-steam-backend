@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CDKeys-Steam 가격 비교 시스템 + 엑셀 내보내기</title>
+    <title>CDKeys-Steam</title>
     <style>
         * {
             margin: 0;
@@ -385,10 +385,6 @@
             background: #4caf50;
         }
         
-        .btn-steam {
-            background: #2196f3;
-        }
-        
         .error-message {
             background: #fee;
             border-left: 4px solid #e74c3c;
@@ -396,26 +392,6 @@
             border-radius: 5px;
             margin-bottom: 20px;
             color: #c0392b;
-        }
-        
-        .loading {
-            text-align: center;
-            padding: 40px;
-        }
-        
-        .spinner {
-            border: 4px solid #f3f3f3;
-            border-top: 4px solid #667eea;
-            border-radius: 50%;
-            width: 50px;
-            height: 50px;
-            animation: spin 1s linear infinite;
-            margin: 0 auto 20px;
-        }
-        
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
         }
         
         .example-urls {
@@ -430,16 +406,27 @@
         .example-urls strong {
             color: #333;
         }
+
+        .steam-api-indicator {
+            background: #e8f5e9;
+            border: 1px solid #4caf50;
+            border-radius: 5px;
+            padding: 8px 12px;
+            font-size: 12px;
+            color: #2e7d32;
+            font-weight: bold;
+        }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>🎮 CDKeys-Steam 가격 비교 시스템 + 엑셀 내보내기</h1>
+        <h1>가격비교시스템 (CDKeys-Steam)</h1>
         
         <div class="status-bar">
             <div class="server-status">
                 <span class="status-indicator"></span>
                 <span id="serverStatus">서버 확인중...</span>
+                <span class="steam-api-indicator">Steam API 사용</span>
             </div>
             <div>
                 <button onclick="clearCache()" class="btn-secondary">캐시 초기화</button>
@@ -493,18 +480,17 @@
             </div>
         </div>
         
-        <!-- 엑셀 내보내기 섹션 -->
         <div id="exportSection" class="export-section">
-            <h3>📊 선택된 게임 엑셀 내보내기</h3>
+            <h3>선택된 게임 엑셀 내보내기</h3>
             <div class="selection-info" id="selectionInfo">
                 선택된 게임: 0개
             </div>
             <div class="export-controls">
                 <button onclick="exportToExcel()" class="btn-success" style="font-size: 18px; padding: 15px 30px;">
-                    📁 엑셀 파일 내보내기
+                    엑셀 파일 내보내기
                 </button>
-                <button onclick="selectAllGames()">✅ 전체 선택</button>
-                <button onclick="deselectAllGames()">❌ 전체 해제</button>
+                <button onclick="selectAllGames()">전체 선택</button>
+                <button onclick="deselectAllGames()">전체 해제</button>
             </div>
         </div>
         
@@ -512,19 +498,17 @@
     </div>
     
     <script>
-        // 서버 URL 설정
         const SERVER_URL = window.location.origin;
-        
-        // 선택된 게임들 저장
         let selectedGames = [];
         let allGames = [];
         
-        // 서버 상태 확인
         async function checkServerStatus() {
             try {
                 const response = await fetch(`${SERVER_URL}/api/status`);
                 if (response.ok) {
-                    document.getElementById('serverStatus').textContent = '서버 연결됨';
+                    const data = await response.json();
+                    document.getElementById('serverStatus').textContent = 
+                        data.steamApi ? '서버 연결됨 (Steam API)' : '서버 연결됨';
                     document.querySelector('.status-indicator').style.background = '#4caf50';
                 } else {
                     throw new Error('Server not responding');
@@ -535,13 +519,11 @@
             }
         }
         
-        // 페이지 로드시 서버 상태 확인
         window.addEventListener('load', () => {
             checkServerStatus();
             setInterval(checkServerStatus, 30000);
         });
         
-        // 가격 비교 시작
         async function startComparison() {
             const url = document.getElementById('cdkeysUrl').value.trim();
             const minDifference = parseInt(document.getElementById('minDifference').value) || 5000;
@@ -559,13 +541,12 @@
             const button = document.getElementById('compareBtn');
             button.disabled = true;
             
-            // UI 초기화
             document.getElementById('results').innerHTML = '';
             document.getElementById('statsSection').style.display = 'none';
             document.getElementById('exportSection').classList.remove('show');
             selectedGames = [];
             allGames = [];
-            showProgress('CDKeys 페이지를 분석중입니다...', 10);
+            showProgress('Steam API로 가격 정보를 수집중입니다...', 10);
             
             try {
                 const response = await fetch(`${SERVER_URL}/api/compare`, {
@@ -598,7 +579,6 @@
             }
         }
         
-        // 게임 선택/해제
         function toggleGameSelection(checkbox, gameIndex) {
             const game = allGames[gameIndex];
             const gameCard = checkbox.closest('.game-card');
@@ -608,7 +588,6 @@
                 const sellPriceInput = gameCard.querySelector('.sell-price-input');
                 sellPriceInput.classList.add('show');
                 
-                // 기본 판매가 설정 (CDKeys 가격 + 10% 마진)
                 const defaultPrice = Math.round(game.cdkeysPrice * 1.1);
                 const input = sellPriceInput.querySelector('input');
                 input.value = defaultPrice;
@@ -628,7 +607,6 @@
             updateSelectionInfo();
         }
         
-        // 판매가 변경
         function updateSellPrice(input, gameId) {
             const price = parseInt(input.value) || 0;
             const game = selectedGames.find(g => g.id === gameId);
@@ -637,7 +615,6 @@
             }
         }
         
-        // 선택 정보 업데이트
         function updateSelectionInfo() {
             const count = selectedGames.length;
             document.getElementById('selectionInfo').textContent = `선택된 게임: ${count}개`;
@@ -650,7 +627,6 @@
             }
         }
         
-        // 전체 선택
         function selectAllGames() {
             const checkboxes = document.querySelectorAll('.game-checkbox');
             checkboxes.forEach((checkbox, index) => {
@@ -661,7 +637,6 @@
             });
         }
         
-        // 전체 해제
         function deselectAllGames() {
             const checkboxes = document.querySelectorAll('.game-checkbox');
             checkboxes.forEach((checkbox, index) => {
@@ -672,21 +647,19 @@
             });
         }
         
-        // 엑셀 내보내기
         async function exportToExcel() {
             if (selectedGames.length === 0) {
                 alert('내보낼 게임을 선택해주세요.');
                 return;
             }
             
-            // 판매가가 입력되지 않은 게임 확인
             const missingPrices = selectedGames.filter(game => !game.sellPrice || game.sellPrice <= 0);
             if (missingPrices.length > 0) {
                 alert('모든 선택된 게임의 판매가를 입력해주세요.');
                 return;
             }
             
-            showProgress('엑셀 파일을 생성하고 있습니다...', 50);
+            showProgress('Steam API에서 게임 정보를 수집하고 엑셀 파일을 생성중입니다...', 50);
             
             try {
                 const response = await fetch(`${SERVER_URL}/api/export-excel`, {
@@ -705,7 +678,6 @@
                     throw new Error('엑셀 내보내기 실패');
                 }
                 
-                // 파일 다운로드
                 const blob = await response.blob();
                 const url = window.URL.createObjectURL(blob);
                 const a = document.createElement('a');
@@ -717,15 +689,14 @@
                 window.URL.revokeObjectURL(url);
                 
                 hideProgress();
-                alert('✅ 엑셀 파일이 성공적으로 다운로드되었습니다!');
+                alert('엑셀 파일이 성공적으로 다운로드되었습니다!');
                 
             } catch (error) {
                 hideProgress();
-                alert('❌ 엑셀 내보내기 중 오류가 발생했습니다: ' + error.message);
+                alert('엑셀 내보내기 중 오류가 발생했습니다: ' + error.message);
             }
         }
         
-        // 캐시 초기화
         async function clearCache() {
             if (!confirm('캐시를 초기화하시겠습니까?')) return;
             
@@ -742,7 +713,6 @@
             }
         }
         
-        // 진행 상황 표시
         function showProgress(text, percent = 0) {
             const section = document.getElementById('progressSection');
             section.classList.add('active');
@@ -757,13 +727,11 @@
             document.getElementById('progressSection').classList.remove('active');
         }
         
-        // 에러 표시
         function showError(message) {
             const results = document.getElementById('results');
             results.innerHTML = `<div class="error-message">${message}</div>`;
         }
         
-        // 가격 포맷
         function formatPrice(price) {
             if (price === null || price === undefined || isNaN(price)) {
                 return '₩0';
@@ -771,11 +739,9 @@
             return `₩${price.toLocaleString('ko-KR')}`;
         }
         
-        // 결과 표시
         function displayResults(data) {
             const { totalGames, discountedGames, games } = data;
             
-            // 통계 표시
             document.getElementById('statsSection').style.display = 'grid';
             document.getElementById('totalGames').textContent = totalGames || 0;
             document.getElementById('discountedGames').textContent = discountedGames || 0;
@@ -787,7 +753,6 @@
                 document.getElementById('avgSavings').textContent = formatPrice(avgSavings);
                 document.getElementById('maxSavings').textContent = formatPrice(maxSavings);
                 
-                // 게임 카드 생성
                 const resultsHTML = games.map((game, index) => {
                     const cdkeysPrice = game.cdkeysPrice || 0;
                     const steamOriginalPrice = game.steamOriginalPrice || 0;
@@ -799,7 +764,7 @@
                             <input type="checkbox" class="game-checkbox" 
                                    onchange="toggleGameSelection(this, ${index})">
                             <div class="game-header">
-                                <div class="game-title">${game.exactName || game.name}</div>
+                                <div class="game-title">${game.name}</div>
                                 <div class="savings-badge">${game.savingsPercent || 0}% 절약</div>
                             </div>
                             <div class="price-comparison">

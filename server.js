@@ -1,4 +1,3 @@
-
 // server.js - CDKeys-Steam Price Comparison Backend with Steam API
 const express = require('express');
 const cors = require('cors');
@@ -331,16 +330,13 @@ function formatPriceFromCents(cents) {
     return `₩${actualPrice.toLocaleString('ko-KR')}`;
 }
 
-// 기존 getKoreanGameName 함수를 완전히 교체
 async function getKoreanGameName(englishName) {
     try {
-        // Steam API에서 게임 검색
         const gameInfo = await searchSteamGame(englishName);
         if (!gameInfo) {
-            return englishName; // 게임을 찾을 수 없으면 영어명 반환
+            return ""; // 빈 문자열 반환
         }
 
-        // 한국어 상세 정보 API 호출
         const detailsUrl = `${STEAM_STORE_API_BASE}/appdetails?appids=${gameInfo.appid}&cc=KR&l=korean`;
         
         const response = await axios.get(detailsUrl, {
@@ -355,20 +351,20 @@ async function getKoreanGameName(englishName) {
         if (appData && appData.success && appData.data && appData.data.name) {
             const koreanName = appData.data.name;
             
-            // 한국어 제목이 영어와 동일하면 영어명만 반환
+            // 한국어 제목이 영어와 동일하면 빈 문자열 반환
             if (koreanName === englishName) {
-                return englishName;
+                return "";
             }
             
             console.log(`한국어 제목 발견: ${englishName} → ${koreanName}`);
             return koreanName;
         }
 
-        return englishName; // 한국어 제목이 없으면 영어명 반환
+        return ""; // 한국어 제목이 없으면 빈 문자열 반환
         
     } catch (error) {
         console.error(`한국어 제목 가져오기 오류 (${englishName}):`, error.message);
-        return englishName; // 오류 발생시 영어명 반환
+        return ""; // 오류 발생시 빈 문자열 반환
     }
 }
 
@@ -422,6 +418,8 @@ app.post('/api/compare', async (req, res) => {
         console.log('=== 가격 비교 시작 (Steam API 사용) ===');
         console.log(`URL: ${url}`);
         console.log(`최소 차액: ${minDifference}원`);
+        console.log(`시간: 2025-08-17 11:42:49 UTC`);
+        console.log(`사용자: wogho`);
         
         // CDKeys 게임 목록 가져오기
         const cdkeysGames = await fetchCDKeysGames(url);
@@ -473,6 +471,8 @@ app.post('/api/compare', async (req, res) => {
                 console.error(`게임 비교 오류 (${game.name}):`, error.message);
             }
         }
+
+        
         
         // 절약액 기준 정렬
         comparisons.sort((a, b) => b.savings - a.savings);
@@ -502,7 +502,7 @@ app.post('/api/export-excel', async (req, res) => {
         
         console.log(`\n=== 엑셀 내보내기 시작 (wogho님 정확한 고정값) ===`);
         console.log(`👤 사용자: ${user}`);
-        console.log(`📅 시간: 2025-08-17 07:27:37 UTC`);
+        console.log(`📅 시간: 2025-08-17 11:42:49 UTC`);
         console.log(`📊 선택된 게임 수: ${games.length}개`);
         
         if (!games || games.length === 0) {
@@ -558,8 +558,11 @@ app.post('/api/export-excel', async (req, res) => {
                 const steamInfo = await getSteamGameInfo(game.name);
                 const koreanName = await getKoreanGameName(game.name);
                 const cleanGameName = sanitizeProductName(game.name);
-                const cleanKoreanName = sanitizeProductName(koreanName);
-                const productName = `[우회X 한국코드] ${cleanGameName} ${cleanKoreanName} 스팀 키`;
+                
+                // 한국어 제목이 있으면 포함, 없으면 영어명만
+                const productName = koreanName 
+                    ? `[우회X 한국코드] ${cleanGameName} ${sanitizeProductName(koreanName)} 스팀 키`
+                    : `[우회X 한국코드] ${cleanGameName} 스팀 키`;
                 
                 // 추가이미지: 스크린샷 4개를 개행으로 구분
                 const additionalImages = steamInfo.screenshots.join('\n');
@@ -615,7 +618,7 @@ app.post('/api/export-excel', async (req, res) => {
                     "0", // 41. 반품배송비 ✅
                     "0", // 42. 교환배송비 ✅
                     "", // 43. 지역별 차등 배송비
-                    "N", // 44. 별도설치비 ✅
+                    "0", // 44. 별도설치비 ✅
                     "", // 45. 상품정보제공고시 템플릿코드
                     "", // 46. 상품정보제공고시 품명
                     "", // 47. 상품정보제공고시 모델명
@@ -713,7 +716,7 @@ app.post('/api/export-excel', async (req, res) => {
         
         console.log(`✅ wogho님 정확한 고정값이 적용된 엑셀 파일 생성 완료: ${fileName}`);
         console.log(`📊 총 ${excelData.length}행 (A1 헤더 1행 + 컬럼 헤더 1행 + 데이터 ${excelData.length - 2}행)`);
-        console.log(`🎯 2025-08-17 07:27:37 UTC - wogho님 요청사항 100% 반영 완료`);
+        console.log(`🎯 2025-08-17 11:42:49 UTC - wogho님 요청사항 100% 반영 완료`);
         
         // 파일 다운로드
         res.download(filePath, fileName, (err) => {
@@ -743,6 +746,119 @@ app.post('/api/export-excel', async (req, res) => {
     }
 });
 
+// 관리용 엑셀 내보내기 API
+app.post('/api/export-excel-management', async (req, res) => {
+    try {
+        const { games, user = 'wogho', timestamp = new Date().toISOString() } = req.body;
+        
+        console.log(`\n=== 관리용 엑셀 내보내기 시작 ===`);
+        console.log(`👤 사용자: ${user}`);
+        console.log(`📅 시간: 2025-08-17 11:42:49 UTC`);
+        console.log(`📊 선택된 게임 수: ${games.length}개`);
+        
+        if (!games || games.length === 0) {
+            return res.status(400).json({
+                success: false,
+                error: '내보낼 게임이 없습니다.'
+            });
+        }
+        
+        const excelData = [];
+        
+        // 각 게임별로 관리용 데이터 처리
+        for (const game of games) {
+            console.log(`🔄 관리용 데이터 처리: "${game.name}"`);
+            
+            try {
+                const koreanName = await getKoreanGameName(game.name);
+                const cleanGameName = sanitizeProductName(game.name);
+                
+                // 상품명 생성 (기존 로직과 동일)
+                const productName = koreanName 
+                    ? `[우회X 한국코드] ${cleanGameName} ${sanitizeProductName(koreanName)} 스팀 키`
+                    : `[우회X 한국코드] ${cleanGameName} 스팀 키`;
+                
+                // 관리용 데이터 배열 (A1~A7)
+                const gameData = [
+                    productName,                    // A1: 상품명
+                    "",                            // A2: 빈칸 (고정)
+                    game.cdkeysUrl || "",          // A3: CDKeys 구매 링크
+                    "0",                           // A4: 0 (고정)
+                    game.sellPrice || 0,           // A5: 판매가 설정값
+                    "0",                           // A6: 0 (고정)
+                    game.cdkeysPrice || 0          // A7: CDKeys 가격
+                ];
+                
+                excelData.push(gameData);
+                console.log(`✅ "${game.name}" 관리용 데이터 추가 완료`);
+                
+            } catch (error) {
+                console.error(`관리용 데이터 처리 오류 (${game.name}):`, error.message);
+                
+                // 오류 발생시 기본 데이터
+                const basicData = [
+                    `[우회X 한국코드] ${sanitizeProductName(game.name)} 스팀 키`, // A1
+                    "",                            // A2
+                    game.cdkeysUrl || "",          // A3
+                    "0",                           // A4
+                    game.sellPrice || 0,           // A5
+                    "0",                           // A6
+                    game.cdkeysPrice || 0          // A7
+                ];
+                
+                excelData.push(basicData);
+                console.log(`⚠️ "${game.name}" 기본 관리용 데이터 추가`);
+            }
+        }
+        
+        // 엑셀 파일 생성
+        const workbook = xlsx.utils.book_new();
+        const worksheet = xlsx.utils.aoa_to_sheet(excelData);
+        xlsx.utils.book_append_sheet(workbook, worksheet, 'Management');
+        
+        // exports 디렉토리 생성
+        const exportsDir = path.join(__dirname, 'exports');
+        if (!fs.existsSync(exportsDir)) {
+            fs.mkdirSync(exportsDir, { recursive: true });
+        }
+        
+        const fileName = `game_management_${new Date().toISOString().slice(0, 10)}_${Math.random().toString(36).substr(2, 6)}.xlsx`;
+        const filePath = path.join(exportsDir, fileName);
+        
+        xlsx.writeFile(workbook, filePath);
+        
+        console.log(`✅ 관리용 엑셀 파일 생성 완료: ${fileName}`);
+        console.log(`📊 총 ${excelData.length}행 (각 게임당 1행)`);
+        console.log(`📋 컬럼: A1(상품명), A2(빈칸), A3(CDKeys링크), A4(0), A5(판매가), A6(0), A7(CDKeys가격)`);
+        
+        // 파일 다운로드
+        res.download(filePath, fileName, (err) => {
+            if (err) {
+                console.error('관리용 파일 다운로드 오류:', err);
+                res.status(500).json({
+                    success: false,
+                    error: '파일 다운로드 중 오류가 발생했습니다.'
+                });
+            } else {
+                // 5초 후 임시 파일 삭제
+                setTimeout(() => {
+                    fs.unlink(filePath, (unlinkErr) => {
+                        if (unlinkErr) console.error('임시 파일 삭제 오류:', unlinkErr);
+                        else console.log(`🗑️ 임시 파일 삭제: ${fileName}`);
+                    });
+                }, 5000);
+            }
+        });
+        
+    } catch (error) {
+        console.error('❌ 관리용 엑셀 내보내기 오류:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
+});
+
 // API 엔드포인트: 캐시 삭제
 app.delete('/api/cache', (req, res) => {
     cache.flushAll();
@@ -764,10 +880,11 @@ app.get('/api/status', (req, res) => {
             'CDKeys Crawling',
             'Steam Price Comparison',
             'Excel Export (wogho Fixed Values)',
+            'Excel Export Management',
             'Cache Management'
         ],
         user: 'wogho',
-        timestamp: '2025-08-17 07:27:37 UTC',
+        timestamp: '2025-08-17 11:42:49 UTC',
         fixedValues: {
             카테고리코드: "50001735",
             상품상태: "신상품",
@@ -812,9 +929,10 @@ app.listen(PORT, '0.0.0.0', () => {
     URL: http://0.0.0.0:${PORT}
     외부 접속: http://140.238.30.184:${PORT}
     사용자: wogho
-    시간: 2025-08-17 07:27:37 UTC
+    시간: 2025-08-17 11:42:49 UTC
     A1 헤더: "상품 기본정보"
     고정값: wogho님 요청사항 정확히 반영
+    관리용 엑셀: 추가 완료
     ========================================
     `);
     

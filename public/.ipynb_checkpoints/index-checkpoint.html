@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CDKeys-Steam</title>
+    <title>CDKeys-Steam 가격비교시스템</title>
     <style>
         * {
             margin: 0;
@@ -127,6 +127,10 @@
         
         .btn-success {
             background: linear-gradient(135deg, #28a745, #218838);
+        }
+        
+        .btn-management {
+            background: linear-gradient(135deg, #17a2b8, #138496) !important;
         }
         
         .progress-section {
@@ -420,7 +424,7 @@
 </head>
 <body>
     <div class="container">
-        <h1>가격비교시스템 (CDKeys-Steam)</h1>
+        <h1>🎮 CDKeys-Steam 가격비교시스템</h1>
         
         <div class="status-bar">
             <div class="server-status">
@@ -481,16 +485,19 @@
         </div>
         
         <div id="exportSection" class="export-section">
-            <h3>선택된 게임 엑셀 내보내기</h3>
+            <h3>📊 선택된 게임 엑셀 내보내기</h3>
             <div class="selection-info" id="selectionInfo">
                 선택된 게임: 0개
             </div>
             <div class="export-controls">
                 <button onclick="exportToExcel()" class="btn-success" style="font-size: 18px; padding: 15px 30px;">
-                    엑셀 파일 내보내기
+                    📁 엑셀 파일 내보내기
                 </button>
-                <button onclick="selectAllGames()">전체 선택</button>
-                <button onclick="deselectAllGames()">전체 해제</button>
+                <button onclick="exportToExcelManagement()" class="btn-management" style="font-size: 18px; padding: 15px 30px;">
+                    📊 엑셀 파일 내보내기_관리용
+                </button>
+                <button onclick="selectAllGames()">✅ 전체 선택</button>
+                <button onclick="deselectAllGames()">❌ 전체 해제</button>
             </div>
         </div>
         
@@ -689,11 +696,64 @@
                 window.URL.revokeObjectURL(url);
                 
                 hideProgress();
-                alert('엑셀 파일이 성공적으로 다운로드되었습니다!');
+                alert('✅ 스토어용 엑셀 파일이 성공적으로 다운로드되었습니다!\n\n파일 구조: A1 헤더 + 80개 컬럼 스토어 양식');
                 
             } catch (error) {
                 hideProgress();
-                alert('엑셀 내보내기 중 오류가 발생했습니다: ' + error.message);
+                alert('❌ 엑셀 내보내기 중 오류가 발생했습니다: ' + error.message);
+            }
+        }
+        
+        // 관리용 엑셀 내보내기
+        async function exportToExcelManagement() {
+            if (selectedGames.length === 0) {
+                alert('내보낼 게임을 선택해주세요.');
+                return;
+            }
+            
+            // 판매가가 입력되지 않은 게임 확인
+            const missingPrices = selectedGames.filter(game => !game.sellPrice || game.sellPrice <= 0);
+            if (missingPrices.length > 0) {
+                alert('모든 선택된 게임의 판매가를 입력해주세요.');
+                return;
+            }
+            
+            showProgress('관리용 엑셀 파일을 생성하고 있습니다...', 50);
+            
+            try {
+                const response = await fetch(`${SERVER_URL}/api/export-excel-management`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        games: selectedGames,
+                        user: 'wogho',
+                        timestamp: new Date().toISOString()
+                    })
+                });
+                
+                if (!response.ok) {
+                    throw new Error('관리용 엑셀 내보내기 실패');
+                }
+                
+                // 파일 다운로드
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.style.display = 'none';
+                a.href = url;
+                a.download = `game_management_${new Date().toISOString().slice(0, 10)}.xlsx`;
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(url);
+                
+                hideProgress();
+                alert('✅ 관리용 엑셀 파일이 성공적으로 다운로드되었습니다!\n\n파일 구조:\nA1: 상품명\nA2: 빈칸\nA3: CDKeys 링크\nA4: 0\nA5: 판매가\nA6: 0\nA7: CDKeys 가격');
+                
+            } catch (error) {
+                hideProgress();
+                alert('❌ 관리용 엑셀 내보내기 중 오류가 발생했습니다: ' + error.message);
             }
         }
         

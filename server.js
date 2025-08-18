@@ -488,6 +488,12 @@ function formatPriceFromCents(cents) {
     return `₩${actualPrice.toLocaleString('ko-KR')}`;
 }
 
+// 게임명을 20자로 제한하는 함수 추가
+function truncateToLength(text, maxLength = 20) {
+    if (!text) return "";
+    return text.length > maxLength ? text.substring(0, maxLength) : text;
+}
+
 async function getKoreanGameName(englishName) {
     try {
         const gameInfo = await searchSteamGame(englishName);
@@ -805,7 +811,7 @@ app.post('/api/export-excel', async (req, res) => {
                     "5", // 6. 재고수량 ✅
                     "단독형", // 7. 옵션형태 ✅
                     "메일주소필수기입", // 8. 옵션명 ✅
-                    game.name, // 9. 옵션값
+                    truncateToLength(game.name, 20),
                     "", // 10. 옵션가
                     "", // 11. 옵션 재고수량
                     "", // 12. 직접입력 옵션
@@ -840,7 +846,7 @@ app.post('/api/export-excel', async (req, res) => {
                     "0", // 41. 반품배송비 ✅
                     "0", // 42. 교환배송비 ✅
                     "", // 43. 지역별 차등 배송비
-                    "0", // 44. 별도설치비 ✅
+                    "N", // 44. 별도설치비 ✅
                     "", // 45. 상품정보제공고시 템플릿코드
                     "", // 46. 상품정보제공고시 품명
                     "", // 47. 상품정보제공고시 모델명
@@ -889,7 +895,7 @@ app.post('/api/export-excel', async (req, res) => {
                 basicRow[6] = "5";
                 basicRow[7] = "단독형";
                 basicRow[8] = "메일주소필수기입";
-                basicRow[9] = game.name;
+                basicRow[9] = truncateToLength(game.name, 20);
                 basicRow[20] = "Unknown Developer";
                 basicRow[21] = "Unknown Developer";
                 basicRow[24] = "03";
@@ -901,7 +907,7 @@ app.post('/api/export-excel', async (req, res) => {
                 basicRow[33] = "0";
                 basicRow[41] = "0";
                 basicRow[42] = "0";
-                basicRow[44] = "0";
+                basicRow[44] = "N";
                 basicRow[50] = "3235865";
                 basicRow[51] = "050714090848";
                 basicRow[52] = "050714090848";

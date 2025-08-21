@@ -229,7 +229,7 @@ async function fetchCDKeysGames(url) {
         await page.close();
         
         console.log(`\n=== CDKeys 게임명 정리 시작 (PC, DLC 제거) ===`);
-        console.log(`⏰ 시간: 2025-08-21 11:11:16 UTC`);
+        console.log(`⏰ 시간: 2025-08-17 16:03:20 UTC`);
         console.log(`👤 사용자: wogho`);
         
         const processedGames = games.map((game) => {
@@ -531,26 +531,6 @@ async function getKoreanGameName(englishName) {
     }
 }
 
-// 개선된 상품명 생성 함수
-function generateProductName(game, userKoreanName = '', autoKoreanName = '') {
-    const cleanGameName = sanitizeProductName(game.name);
-    
-    // 1순위: 사용자가 직접 입력한 한글명
-    if (userKoreanName && userKoreanName.trim()) {
-        const sanitizedUserKorean = sanitizeProductName(userKoreanName.trim());
-        return `[우회X 한국코드] ${cleanGameName} ${sanitizedUserKorean} 스팀 키`;
-    }
-    
-    // 2순위: Steam API에서 자동으로 가져온 한글명
-    if (autoKoreanName && autoKoreanName.trim()) {
-        const sanitizedAutoKorean = sanitizeProductName(autoKoreanName.trim());
-        return `[우회X 한국코드] ${cleanGameName} ${sanitizedAutoKorean} 스팀 키`;
-    }
-    
-    // 3순위: 한글명이 없는 경우 기본 형식
-    return `[우회X 한국코드] ${cleanGameName} 스팀 키`;
-}
-
 // 가격 파싱
 function parsePrice(priceString) {
     if (!priceString) return 0;
@@ -611,9 +591,6 @@ app.post('/api/refresh-steam-info', async (req, res) => {
             const steamFinalPrice = parsePrice(steamPrice.final);
             const savings = steamOriginalPrice - cdkeysPrice;
             
-            // Steam API에서 한글명 자동 가져오기
-            const autoKoreanName = await getKoreanGameName(game.name);
-            
             const updatedGame = {
                 ...game,
                 exactName: steamPrice.exactName || game.name,
@@ -623,8 +600,7 @@ app.post('/api/refresh-steam-info', async (req, res) => {
                 savings,
                 savingsPercent: Math.round((savings / steamOriginalPrice) * 100),
                 steamAppId: steamPrice.appid,
-                source: `Manual App ID: ${appId}`,
-                koreanName: autoKoreanName // 한글명 추가
+                source: `Manual App ID: ${appId}`
             };
             
             console.log(`✅ App ID ${appId} 정보 갱신 완료: ${updatedGame.exactName}`);
@@ -661,7 +637,7 @@ app.post('/api/compare', async (req, res) => {
         console.log('=== 가격 비교 시작 (다단계 Steam 검색 로직 적용) ===');
         console.log(`URL: ${url}`);
         console.log(`최소 차액: ${minDifference}원`);
-        console.log(`시간: 2025-08-21 11:11:16 UTC`);
+        console.log(`시간: 2025-08-17 16:03:20 UTC`);
         console.log(`사용자: wogho`);
         
         const cdkeysGames = await fetchCDKeysGames(url);
@@ -687,9 +663,6 @@ app.post('/api/compare', async (req, res) => {
                     const steamFinalPrice = parsePrice(steamPrice.final);
                     const savings = steamOriginalPrice - cdkeysPrice;
                     
-                    // Steam API에서 한글명 자동 가져오기
-                    const autoKoreanName = await getKoreanGameName(game.name);
-                    
                     console.log(`💰 "${game.name}": CDKeys ${cdkeysPrice}원 vs Steam ${steamOriginalPrice}원 (절약: ${savings}원) [${steamPrice.source}]`);
                     
                     const gameData = {
@@ -706,8 +679,7 @@ app.post('/api/compare', async (req, res) => {
                         savingsPercent: Math.round((savings / steamOriginalPrice) * 100),
                         steamAppId: steamPrice.appid,
                         source: steamPrice.source,
-                        steamFound: true,
-                        koreanName: autoKoreanName // 한글명 추가
+                        steamFound: true
                     };
                     
                     if (savings >= minDifference) {
@@ -756,14 +728,14 @@ app.post('/api/compare', async (req, res) => {
     }
 });
 
-// 엑셀 내보내기 API (사용자 지정 한글명 지원)
+// 엑셀 내보내기 API
 app.post('/api/export-excel', async (req, res) => {
     try {
         const { games, user = 'wogho', timestamp = new Date().toISOString() } = req.body;
         
-        console.log(`\n=== 엑셀 내보내기 시작 (사용자 지정 한글명 지원) ===`);
+        console.log(`\n=== 엑셀 내보내기 시작 (wogho님 정확한 고정값) ===`);
         console.log(`👤 사용자: ${user}`);
-        console.log(`📅 시간: 2025-08-21 11:11:16 UTC`);
+        console.log(`📅 시간: 2025-08-17 16:03:20 UTC`);
         console.log(`📊 선택된 게임 수: ${games.length}개`);
         
         if (!games || games.length === 0) {
@@ -816,15 +788,12 @@ app.post('/api/export-excel', async (req, res) => {
             
             try {
                 const steamInfo = await getSteamGameInfo(game.name);
+                const koreanName = await getKoreanGameName(game.name);
+                const cleanGameName = sanitizeProductName(game.name);
                 
-                // 상품명 생성 (우선순위: 사용자입력 → Steam API → 기본)
-                const productName = generateProductName(
-                    game, 
-                    game.customKoreanName, // 사용자가 입력한 한글명
-                    game.koreanName        // Steam API에서 가져온 한글명
-                );
-                
-                console.log(`🏷️ 상품명 생성: "${productName}"`);
+                const productName = koreanName 
+                    ? `[우회X 한국코드] ${cleanGameName} ${sanitizeProductName(koreanName)} 스팀 키`
+                    : `[우회X 한국코드] ${cleanGameName} 스팀 키`;
                 
                 const additionalImages = steamInfo.screenshots.join('\n');
                 
@@ -835,7 +804,7 @@ app.post('/api/export-excel', async (req, res) => {
                 const row = [
                     "", // 0. 판매자 상품코드
                     "50001735", // 1. 카테고리코드 ✅
-                    productName, // 2. 상품명 (개선된 로직 적용)
+                    productName, // 2. 상품명
                     "신상품", // 3. 상품상태 ✅
                     game.sellPrice || game.cdkeysPrice, // 4. 판매가
                     "과세상품", // 5. 부가세 ✅
@@ -917,16 +886,9 @@ app.post('/api/export-excel', async (req, res) => {
             } catch (error) {
                 console.error(`게임 정보 처리 오류 (${game.name}):`, error.message);
                 
-                // 기본 상품명 생성 (오류 시에도 적용)
-                const basicProductName = generateProductName(
-                    game, 
-                    game.customKoreanName, 
-                    game.koreanName
-                );
-                
                 const basicRow = new Array(80).fill("");
                 basicRow[1] = "50001735";
-                basicRow[2] = basicProductName; // 개선된 기본 상품명
+                basicRow[2] = `[우회X 한국코드] ${game.name} 스팀 키`;
                 basicRow[3] = "신상품";
                 basicRow[4] = game.sellPrice || game.cdkeysPrice;
                 basicRow[5] = "과세상품";
@@ -975,7 +937,6 @@ app.post('/api/export-excel', async (req, res) => {
         
         console.log(`✅ 엑셀 파일 생성 완료: ${fileName}`);
         console.log(`📊 총 ${excelData.length}행`);
-        console.log(`🏷️ 상품명 우선순위: 1순위(사용자입력) → 2순위(Steam API) → 3순위(기본형식)`);
         
         // 파일 다운로드
         res.download(filePath, fileName, (err) => {
@@ -1005,14 +966,14 @@ app.post('/api/export-excel', async (req, res) => {
     }
 });
 
-// 관리용 엑셀 내보내기 API (사용자 지정 한글명 지원)
+// 관리용 엑셀 내보내기 API
 app.post('/api/export-excel-management', async (req, res) => {
     try {
         const { games, user = 'wogho', timestamp = new Date().toISOString() } = req.body;
         
-        console.log(`\n=== 관리용 엑셀 내보내기 시작 (사용자 지정 한글명 지원) ===`);
+        console.log(`\n=== 관리용 엑셀 내보내기 시작 ===`);
         console.log(`👤 사용자: ${user}`);
-        console.log(`📅 시간: 2025-08-21 11:11:16 UTC`);
+        console.log(`📅 시간: 2025-08-17 16:03:20 UTC`);
         console.log(`📊 선택된 게임 수: ${games.length}개`);
         console.log(`💰 A5 판매가 정책: 사용자 입력값 - 500원 고정`);
         
@@ -1030,14 +991,12 @@ app.post('/api/export-excel-management', async (req, res) => {
             console.log(`🔄 관리용 데이터 처리: "${game.name}"`);
             
             try {
-                // 상품명 생성 (우선순위: 사용자입력 → Steam API → 기본)
-                const productName = generateProductName(
-                    game, 
-                    game.customKoreanName, // 사용자가 입력한 한글명
-                    game.koreanName        // Steam API에서 가져온 한글명
-                );
+                const koreanName = await getKoreanGameName(game.name);
+                const cleanGameName = sanitizeProductName(game.name);
                 
-                console.log(`🏷️ 관리용 상품명: "${productName}"`);
+                const productName = koreanName 
+                    ? `[우회X 한국코드] ${cleanGameName} ${sanitizeProductName(koreanName)} 스팀 키`
+                    : `[우회X 한국코드] ${cleanGameName} 스팀 키`;
                 
                 // A5 판매가 계산: 사용자 입력값 - 500원 고정
                 const originalSellPrice = game.sellPrice || 0;
@@ -1047,13 +1006,13 @@ app.post('/api/export-excel-management', async (req, res) => {
                 
                 // 관리용 데이터 배열 (A1~A7)
                 const gameData = [
-                    productName,                       // A1: 상품명 (개선된 로직)
-                    "",                               // A2: 빈칸
-                    game.cdkeysUrl || "",             // A3: CDKeys 구매 링크
-                    "0",                              // A4: 0
-                    adjustedSellPrice,                // A5: 판매가 (-500원) ✅
-                    "0",                              // A6: 0
-                    game.cdkeysPrice || 0             // A7: CDKeys 가격
+                    productName,                    // A1: 상품명
+                    "",                            // A2: 빈칸
+                    game.cdkeysUrl || "",          // A3: CDKeys 구매 링크
+                    "0",                           // A4: 0
+                    adjustedSellPrice,             // A5: 판매가 (-500원) ✅
+                    "0",                           // A6: 0
+                    game.cdkeysPrice || 0          // A7: CDKeys 가격
                 ];
                 
                 excelData.push(gameData);
@@ -1065,15 +1024,8 @@ app.post('/api/export-excel-management', async (req, res) => {
                 const originalSellPrice = game.sellPrice || 0;
                 const adjustedSellPrice = Math.max(0, originalSellPrice - 500);
                 
-                // 기본 상품명 생성 (오류 시에도 적용)
-                const basicProductName = generateProductName(
-                    game, 
-                    game.customKoreanName, 
-                    game.koreanName
-                );
-                
                 const basicData = [
-                    basicProductName,     // A1: 개선된 기본 상품명
+                    `[우회X 한국코드] ${sanitizeProductName(game.name)} 스팀 키`,
                     "",
                     game.cdkeysUrl || "",
                     "0",
@@ -1106,7 +1058,6 @@ app.post('/api/export-excel-management', async (req, res) => {
         console.log(`✅ 관리용 엑셀 파일 생성 완료: ${fileName}`);
         console.log(`📊 총 ${excelData.length}행`);
         console.log(`📋 컬럼: A1(상품명), A2(빈칸), A3(CDKeys링크), A4(0), A5(판매가-500), A6(0), A7(CDKeys가격)`);
-        console.log(`🏷️ 상품명 우선순위: 1순위(사용자입력) → 2순위(Steam API) → 3순위(기본형식)`);
         
         // 파일 다운로드
         res.download(filePath, fileName, (err) => {
@@ -1157,19 +1108,14 @@ app.get('/api/status', (req, res) => {
             'CDKeys Crawling (Enhanced PC/DLC Removal)',
             'Steam API Multi-Stage Search',
             'Manual App ID Input',
-            'Excel Export (Custom Korean Name Support)', // 업데이트됨
-            'Excel Export Management (Custom Korean Name Support)', // 업데이트됨
+            'Excel Export (wogho Fixed Values)',
+            'Excel Export Management',
             'Cache Management',
             'Game Name Cleaning System'
         ],
         user: 'wogho',
-        timestamp: '2025-08-21 11:11:16 UTC',
+        timestamp: '2025-08-17 16:03:20 UTC',
         steamSource: 'Steam API Multi-Stage Search',
-        productNamePriority: [ // 새로 추가
-            '1순위: 사용자 입력 한글명',
-            '2순위: Steam API 자동 한글명',
-            '3순위: 기본 형식 (한글명 없음)'
-        ],
         cleaningPatterns: [
             'PC (various formats)',
             'DLC (various formats)', 
@@ -1208,7 +1154,7 @@ app.post('/api/test-clean-name', (req, res) => {
             original: gameName,
             cleaned: cleanedName,
             changed: gameName !== cleanedName,
-            timestamp: '2025-08-21 11:11:16 UTC',
+            timestamp: '2025-08-17 16:03:20 UTC',
             user: 'wogho'
         });
         
@@ -1220,6 +1166,7 @@ app.post('/api/test-clean-name', (req, res) => {
         });
     }
 });
+
 // 헬스 체크
 app.get('/health', (req, res) => {
     res.status(200).send('OK');
@@ -1232,12 +1179,12 @@ app.use(express.static('public'));
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`
     ========================================
-    CDKeys-Steam 가격 비교 서버 (사용자 지정 한글명 지원)
+    CDKeys-Steam 가격 비교 서버 (다단계 검색 로직)
     포트: ${PORT}
     URL: http://0.0.0.0:${PORT}
     외부 접속: http://140.238.30.184:${PORT}
     사용자: wogho
-    시간: 2025-08-21 11:18:01 UTC
+    시간: 2025-08-17 16:03:20 UTC
     
     🚀 다단계 Steam 검색 로직 적용:
     1단계: 원본 게임명 → 2단계: 기본 정리
@@ -1245,23 +1192,13 @@ app.listen(PORT, '0.0.0.0', () => {
     5단계: 콜론 이후 제거 → 6단계: 대시 이후 제거
     7단계: 마지막 단어 제거 → 8단계: 마지막 2단어 제거
     
-    🏷️ 상품명 생성 우선순위:
-    1순위: 사용자가 직접 입력한 한글명
-    2순위: Steam API에서 자동으로 가져온 한글명  
-    3순위: 한글명 없이 기본 형식
-    
-    📝 상품명 형식:
-    • 사용자 입력: [우회X 한국코드] (상품명) (사용자입력한글명) 스팀 키
-    • API 자동: [우회X 한국코드] (상품명) (한글명) 스팀 키
-    • 기본형식: [우회X 한국코드] (상품명) 스팀 키
-    
     🎯 wogho님 요청사항 100% 반영 완료!
     ========================================
     `);
     
     // 브라우저 사전 초기화
     initBrowser().then(() => {
-        console.log('Puppeteer 브라우저 준비 완료 (사용자 지정 한글명 지원)');
+        console.log('Puppeteer 브라우저 준비 완료 (다단계 검색 로직 적용)');
     }).catch(err => {
         console.error('브라우저 초기화 실패:', err);
     });

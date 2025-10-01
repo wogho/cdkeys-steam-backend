@@ -178,144 +178,153 @@ function cleanGameName(originalName) {
     return cleanName;
 }
 
-// CDKeys 단일 페이지 가격 크롤링
-async function fetchCDKeysSinglePrice(url) {
-    const cacheKey = `cdkeys_single_${url}`;
-    const cached = cache.get(cacheKey);
-    if (cached) {
-        console.log('CDKeys 단일 페이지 캐시 데이터 사용');
-        return cached;
-    }
-
-    try {
-        const browser = await initBrowser();
-        const page = await browser.newPage();
-        
-        await page.setUserAgent('Mozilla/5.0 (X11; Linux aarch64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
-        
-        console.log(`CDKeys 단일 페이지 로딩: ${url}`);
-        await page.goto(url, { 
-            waitUntil: 'networkidle2',
-            timeout: 30000 
-        });
-        
-        await page.waitForSelector('.final-price', { timeout: 10000 });
-        
-        const gameData = await page.evaluate(() => {
-            // 게임 제목 추출
-            const titleElement = document.querySelector('h1.page-title') || 
-                                document.querySelector('.product-title') ||
-                                document.querySelector('h1');
-            const title = titleElement ? titleElement.textContent.trim() : '';
-            
-            // 가격 추출
-            const priceElement = document.querySelector('.final-price .price span.price');
-            const price = priceElement ? priceElement.textContent.trim() : '';
-            
-            return { 
-                originalName: title,
-                price: price,
-                url: window.location.href
-            };
-        });
-        
-        await page.close();
-        
-        if (!gameData.originalName || !gameData.price) {
-            throw new Error('게임 제목 또는 가격을 찾을 수 없습니다.');
-        }
-        
-        console.log(`단일 페이지 크롤링 완료: ${gameData.originalName} - ${gameData.price}`);
-        
-        const cleanName = cleanGameName(gameData.originalName);
-        const result = {
-            ...gameData,
-            name: cleanName,
-            id: `single_${Date.now()}`
-        };
-        
-        cache.set(cacheKey, result);
-        return result;
-        
-    } catch (error) {
-        console.error('CDKeys 단일 페이지 크롤링 오류:', error);
-        throw error;
-    }
-}
-
 // CDKeys 게임 목록 크롤링
 async function fetchCDKeysGames(url) {
-    const cacheKey = `cdkeys_${url}`;
+  const cacheKey = `cdkeys_${Buffer.from(url).toString('base64')}`;
+
+  try {
     const cached = cache.get(cacheKey);
     if (cached) {
-        console.log('CDKeys 캐시 데이터 사용');
-        return cached;
+      console.log('CDKeys 캐시된 데이터 반환:', url);
+      return cached;
     }
 
-    try {
-        const browser = await initBrowser();
-        const page = await browser.newPage();
-        
-        await page.setUserAgent('Mozilla/5.0 (X11; Linux aarch64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
-        
-        console.log(`CDKeys 페이지 로딩: ${url}`);
-        await page.goto(url, { 
-            waitUntil: 'networkidle2',
-            timeout: 30000 
+    console.log('CDKeys 페이지 크롤링 시작:', url);
+
+    const response = await axios.get(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.8',
+        'Cache-Control': 'no-cache',
+        Pragma: 'no-cache',
+        DNT: '1',
+        Connection: 'keep-alive',
+        'Upgrade-Insecure-Requests': '1'
+      },
+      timeout: 30000
+    });
+
+    const $ = cheerio.load(response.data);
+
+    const isSingleGamePage =
+      !url.includes('/pc-games') &&
+      !url.includes('/search') &&
+      !url.includes('/category') &&
+      !url.includes('?') &&
+      url.split('/').length > 4;
+
+    let games = [];
+
+    if (isSingleGamePage) {
+      console.log('🎮 단일 게임 페이지로 감지됨:', url);
+
+      const rawTitle =
+        $('h1').first().text().trim() ||
+        $('.product-title').first().text().trim() ||
+        $('.page-title').first().text().trim() ||
+        $('title').text().split('|')[0].trim();
+
+      let price = '';
+
+      const finalPriceEl = $('.final-price .price-wrapper .price .price').first();
+      if (finalPriceEl.length) {
+        price = finalPriceEl.text().trim();
+        console.log('🎯 final-price에서 가격 추출:', price);
+      }
+
+      if (!price) {
+        const idPriceEl = $('[id^="product-price-"] .price .price').first();
+        if (idPriceEl.length) {
+          price = idPriceEl.text().trim();
+          console.log('🎯 product-price-* ID에서 가격 추출:', price);
+        }
+      }
+
+      if (!price) {
+        const baseEl = $('.price, .product-price, .current-price, .sale-price').first();
+        price = (baseEl.text() || '').trim();
+        if (price) console.log('📊 기본 선택자에서 가격 추출:', price);
+      }
+
+      if (!price) {
+        const altEl = $('.cost, .amount, [class*="price"]').first();
+        price = (altEl.text() || '').trim();
+        if (price) console.log('🔍 대체 선택자에서 가격 추출:', price);
+      }
+
+      if (!price) {
+        const metaPrice = $('meta[itemprop="price"]').attr('content');
+        const metaCur = $('meta[itemprop="priceCurrency"]').attr('content');
+        if (metaPrice && metaCur) {
+          price = metaCur === 'USD' ? `$${metaPrice}` : `${metaPrice} ${metaCur}`;
+          console.log('🏷️ meta 태그에서 가격 추출:', price);
+        }
+      }
+
+      if (rawTitle) {
+        const cleaned = cleanGameName(rawTitle);
+        games.push({
+            id: `cdkeys_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
+            name: cleaned,
+            originalName: rawTitle,
+            price: price || 'N/A',
+            url,
+            source: 'cdkeys'
         });
-        
-        await page.waitForSelector('.product-item', { timeout: 10000 });
-        
-        const games = await page.evaluate(() => {
-            const gameList = [];
-            const items = document.querySelectorAll('.product-item');
-            
-            items.forEach((item, index) => {
-                const linkElement = item.querySelector('.product-item-link');
-                const priceElement = item.querySelector('.price');
-                
-                if (linkElement && priceElement) {
-                    const originalName = linkElement.textContent.trim();
-                    const price = priceElement.textContent.trim();
-                    const url = linkElement.href;
-                    
-                    gameList.push({ 
-                        originalName: originalName,
-                        price, 
-                        url,
-                        id: `game_${Date.now()}_${index}`
-                    });
-                }
+        console.log(`✅ 단일 게임 추출 완료: "${cleaned}" - ${price}`);
+      } else {
+        console.log('❌ 제목을 찾을 수 없음 (단일 페이지)');
+      }
+    } else {
+      console.log('📋 목록 페이지로 감지됨:', url);
+
+      $('.product-item, .item, .game-item').each((idx, el) => {
+        try {
+          const $item = $(el);
+          const rawTitle =
+            $item.find('.product-title, .title, .name, h3, h4').first().text().trim() ||
+            $item.find('a[title]').attr('title') ||
+            '';
+
+          let price =
+            $item.find('.price, .cost, .amount').first().text().trim() ||
+            $item.find('[class*="price"]').first().text().trim();
+
+          let link = $item.find('a').first().attr('href');
+            if (link && !link.startsWith('http')) {
+              link = 'https://www.cdkeys.com' + link;
+            }
+
+          if (rawTitle) {
+            const cleaned = cleanGameName(rawTitle);
+            games.push({
+              id: `cdkeys_${Date.now()}_${idx}_${Math.random().toString(36).slice(2, 9)}`,
+              name: cleaned,
+              originalName: rawTitle,
+              price: price || 'N/A',
+              url: link || url,
+              source: 'cdkeys'
             });
-            
-            return gameList;
-        });
-        
-        await page.close();
-        
-        console.log(`\n=== CDKeys 게임명 정리 시작 (PC, DLC 제거) ===`);
-        console.log(`⏰ 시간: 2025-08-21 11:11:16 UTC`);
-        console.log(`👤 사용자: wogho`);
-        
-        const processedGames = games.map((game) => {
-            const cleanName = cleanGameName(game.originalName);
-            
-            return {
-                ...game,
-                name: cleanName
-            };
-        });
-        
-        const changedCount = processedGames.filter(game => game.name !== game.originalName).length;
-        console.log(`📊 총 ${processedGames.length}개 게임, ${changedCount}개 게임명 정리됨`);
-        
-        cache.set(cacheKey, processedGames);
-        return processedGames;
-        
-    } catch (error) {
-        console.error('CDKeys 크롤링 오류:', error);
-        throw error;
+          }
+        } catch (e) {
+          console.error('게임 아이템 파싱 오류:', e.message);
+        }
+      });
     }
+
+    console.log(`🎯 CDKeys에서 총 ${games.length}개 게임 추출됨`);
+    cache.set(cacheKey, games, 600); // 10분
+    return games;
+  } catch (err) {
+    console.error('❌ CDKeys 크롤링 오류:', err.message);
+    const cached = cache.get(cacheKey);
+    if (cached) {
+      console.log('⚠️ 오류 발생 → 캐시 데이터 반환');
+      return cached;
+    }
+    return [];
+  }
 }
 
 // Steam API 다단계 검색 로직
@@ -649,86 +658,6 @@ function sanitizeProductName(name) {
 }
 
 // API 엔드포인트들
-
-// 단일 페이지 가격 비교 API
-app.post('/api/compare-single', async (req, res) => {
-    const { url, margin = 0 } = req.body;
-    
-    if (!url) {
-        return res.status(400).json({ error: 'URL이 필요합니다.' });
-    }
-    
-    try {
-        console.log(`\n=== 단일 페이지 가격 비교 시작 ===`);
-        console.log(`URL: ${url}`);
-        console.log(`마진율: ${margin}%`);
-        
-        // CDKeys 단일 페이지 크롤링
-        const cdkeysGame = await fetchCDKeysSinglePrice(url);
-        
-        // Steam 가격 조회
-        const steamPrice = await fetchSteamPrice(cdkeysGame.name);
-        
-        if (!steamPrice) {
-            return res.json({
-                success: false,
-                game: cdkeysGame,
-                message: 'Steam에서 게임을 찾을 수 없습니다.'
-            });
-        }
-        
-        // 가격 파싱
-        const cdkeysPriceKRW = parsePrice(cdkeysGame.price);
-        const steamPriceKRW = parsePrice(steamPrice.final);
-        
-        // 판매가 계산 (CDKeys 가격 + 마진)
-        const sellPrice = Math.round(cdkeysPriceKRW * (1 + margin / 100));
-        
-        // 절약 금액 계산
-        const savingsAmount = steamPriceKRW - sellPrice;
-        const savingsPercent = steamPriceKRW > 0 
-            ? Math.round((savingsAmount / steamPriceKRW) * 100) 
-            : 0;
-        
-        const result = {
-            id: cdkeysGame.id,
-            originalName: cdkeysGame.originalName,
-            name: cdkeysGame.name,
-            cdkeysPrice: cdkeysGame.price,
-            cdkeysPriceKRW: cdkeysPriceKRW,
-            steamPrice: steamPrice.final,
-            steamPriceKRW: steamPriceKRW,
-            steamOriginalPrice: steamPrice.original,
-            steamDiscount: steamPrice.discount || '',
-            steamAppId: steamPrice.appid,
-            steamExactName: steamPrice.exactName,
-            steamSource: steamPrice.source,
-            sellPrice: sellPrice,
-            savingsAmount: savingsAmount,
-            savingsPercent: savingsPercent,
-            url: cdkeysGame.url,
-            isProfit: savingsAmount > 0
-        };
-        
-        console.log(`✅ 단일 페이지 비교 완료:`);
-        console.log(`   게임: ${result.name}`);
-        console.log(`   CDKeys: ${result.cdkeysPrice}`);
-        console.log(`   Steam: ${result.steamPrice}`);
-        console.log(`   절약: ${savingsPercent}%`);
-        
-        res.json({
-            success: true,
-            result: result
-        });
-        
-    } catch (error) {
-        console.error('단일 페이지 비교 오류:', error);
-        res.status(500).json({ 
-            error: '가격 비교 중 오류가 발생했습니다.',
-            details: error.message 
-        });
-    }
-});
 
 // App ID로 Steam 정보 재조회
 app.post('/api/refresh-steam-info', async (req, res) => {

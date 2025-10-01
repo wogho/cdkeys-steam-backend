@@ -580,29 +580,20 @@
             <div class="input-group">
                 <input type="text" 
                        id="cdkeysUrl" 
-                       placeholder="CDKeys URL 입력 (목록 또는 단일 페이지)"
+                       placeholder="CDKeys URL 입력 (예: https://www.cdkeys.com/pc/games)"
                        value="">
                 <input type="number" 
                        id="minDifference" 
-                       placeholder="마진율(%)"
-                       value="0"
-                       min="0"
-                       max="100">
-                <label style="display: flex; align-items: center; gap: 8px; white-space: nowrap;">
-                    <input type="checkbox" id="isSinglePage" style="width: 20px; height: 20px; cursor: pointer;">
-                    <span>단일 페이지</span>
-                </label>
+                       placeholder="최소 차액"
+                       value="5000"
+                       min="0">
                 <button id="compareBtn" onclick="startComparison()">가격 비교 시작</button>
             </div>
             <div class="example-urls">
                 <strong>예시 URL:</strong><br>
-                <span id="exampleUrlsText">
-                    <strong>📋 목록 페이지:</strong><br>
-                    • https://www.cdkeys.com/pc/games<br>
-                    • https://www.cdkeys.com/pc/games?primary_genre%5B0%5D=Simulation<br>
-                    <strong>📄 단일 페이지:</strong><br>
-                    • https://www.cdkeys.com/ghost-of-tsushima-director-s-cut-pc-steam
-                </span>
+                • https://www.cdkeys.com/pc/games<br>
+                • https://www.cdkeys.com/pc/games?primary_genre%5B0%5D=Simulation<br>
+                • https://www.cdkeys.com/pc/games?primary_genre%5B0%5D=Action
             </div>
         </div>
         
@@ -693,8 +684,7 @@
         
         async function startComparison() {
             const url = document.getElementById('cdkeysUrl').value.trim();
-            const margin = parseInt(document.getElementById('minDifference').value) || 0;
-            const isSinglePage = document.getElementById('isSinglePage').checked;
+            const minDifference = parseInt(document.getElementById('minDifference').value) || 5000;
             
             if (!url) {
                 showError('CDKeys URL을 입력해주세요.');
@@ -717,76 +707,38 @@
             selectedGames = [];
             allGames = [];
             notFoundGames = [];
+            showProgress('Steam API + SteamDB로 가격 정보를 수집중입니다...', 10);
             
-            if (isSinglePage) {
-                // 단일 페이지 비교
-                showProgress('단일 페이지에서 가격 정보를 수집중입니다...', 10);
+            try {
+                const response = await fetch(`${SERVER_URL}/api/compare`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ url, minDifference })
+                });
                 
-                try {
-                    const response = await fetch(`${SERVER_URL}/api/compare-single`, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                        },
-                        body: JSON.stringify({ url, margin })
-                    });
-                    
-                    if (!response.ok) {
-                        throw new Error(`서버 오류: ${response.status}`);
-                    }
-                    
-                    const data = await response.json();
-                    
-                    if (data.success) {
-                        allGames = [data.result];
-                        displaySingleResult(data.result);
-                        hideProgress();
-                    } else {
-                        showError(data.message || '게임을 찾을 수 없습니다.');
-                        hideProgress();
-                    }
-                    
-                } catch (error) {
-                    showError(`오류 발생: ${error.message}`);
-                    hideProgress();
-                } finally {
-                    button.disabled = false;
+                if (!response.ok) {
+                    throw new Error(`서버 오류: ${response.status}`);
                 }
-            } else {
-                // 목록 페이지 비교 (기존 로직)
-                showProgress('Steam API + SteamDB로 가격 정보를 수집중입니다...', 10);
                 
-                try {
-                    const response = await fetch(`${SERVER_URL}/api/compare`, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                        },
-                        body: JSON.stringify({ url, minDifference: margin })
-                    });
-                    
-                    if (!response.ok) {
-                        throw new Error(`서버 오류: ${response.status}`);
-                    }
-                    
-                    const data = await response.json();
-                    
-                    if (data.success) {
-                        allGames = data.games || [];
-                        notFoundGames = data.notFound || [];
-                        displayResults(data);
-                        displayNotFoundGames(data);
-                        hideProgress();
-                    } else {
-                        throw new Error(data.error || '알 수 없는 오류');
-                    }
-                    
-                } catch (error) {
-                    showError(`오류 발생: ${error.message}`);
+                const data = await response.json();
+                
+                if (data.success) {
+                    allGames = data.games || [];
+                    notFoundGames = data.notFound || [];
+                    displayResults(data);
+                    displayNotFoundGames(data);
                     hideProgress();
-                } finally {
-                    button.disabled = false;
+                } else {
+                    throw new Error(data.error || '알 수 없는 오류');
                 }
+                
+            } catch (error) {
+                showError(`오류 발생: ${error.message}`);
+                hideProgress();
+            } finally {
+                button.disabled = false;
             }
         }
         
@@ -1088,124 +1040,6 @@
                 return '₩0';
             }
             return `₩${price.toLocaleString('ko-KR')}`;
-        }
-        
-        function parsePrice(priceString) {
-            if (!priceString) return 0;
-            
-            if (priceString === '무료' || priceString.toLowerCase().includes('free')) return 0;
-            
-            if (priceString.includes('₩')) {
-                return parseInt(priceString.replace(/[₩,\s]/g, ''));
-            }
-            
-            if (priceString.includes('$')) {
-                const dollars = parseFloat(priceString.replace(/[$,\s]/g, ''));
-                return Math.round(dollars * 1320);
-            }
-            
-            if (priceString.includes('€')) {
-                const euros = parseFloat(priceString.replace(/[€,\s]/g, ''));
-                return Math.round(euros * 1430);
-            }
-            
-            if (priceString.includes('£')) {
-                const pounds = parseFloat(priceString.replace(/[£,\s]/g, ''));
-                return Math.round(pounds * 1670);
-            }
-            
-            return 0;
-        }
-        
-        function displaySingleResult(game) {
-            document.getElementById('statsSection').style.display = 'grid';
-            document.getElementById('totalGames').textContent = 1;
-            document.getElementById('discountedGames').textContent = game.isProfit ? 1 : 0;
-            document.getElementById('notFoundGames').textContent = 0;
-            document.getElementById('avgSavings').textContent = formatPrice(game.savingsAmount);
-            document.getElementById('maxSavings').textContent = formatPrice(game.savingsAmount);
-            
-            // allGames 배열 구성 (엑셀 내보내기를 위해)
-            allGames = [{
-                id: game.id,
-                name: game.name,
-                originalName: game.originalName,
-                exactName: game.steamExactName || game.name,
-                cdkeysPrice: game.cdkeysPriceKRW,
-                steamFinalPrice: game.steamPriceKRW,
-                steamOriginalPrice: game.steamPriceKRW,
-                steamDiscount: game.steamDiscount || '',
-                steamAppId: game.steamAppId,
-                savings: game.savingsAmount,
-                savingsPercent: game.savingsPercent,
-                cdkeysUrl: game.url,
-                source: game.steamSource,
-                koreanName: '' // 사용자가 입력할 수 있도록
-            }];
-            
-            const gameHTML = `
-                <div class="game-card">
-                    <input type="checkbox" class="game-checkbox" 
-                           onchange="toggleGameSelection(this, 0)">
-                    <div class="game-header">
-                        <div class="game-title">
-                            ${game.steamExactName || game.name}
-                            ${game.steamSource ? `<span class="steam-source-badge">${game.steamSource}</span>` : ''}
-                        </div>
-                        <div class="${game.isProfit ? 'savings-badge' : 'not-found-badge'}">
-                            ${game.savingsPercent}% ${game.isProfit ? '절약' : '손해'}
-                        </div>
-                    </div>
-                    <div class="price-comparison">
-                        <div class="price-box cdkeys-price">
-                            <div class="price-label">CDKeys</div>
-                            <div class="price-value">${game.cdkeysPrice}</div>
-                        </div>
-                        <div class="price-box steam-price">
-                            <div class="price-label">Steam</div>
-                            <div class="price-value">
-                                ${game.steamPrice}
-                                ${game.steamDiscount ? `<span class="discount-badge">${game.steamDiscount}</span>` : ''}
-                            </div>
-                            ${game.steamOriginalPrice !== game.steamPrice ? 
-                                `<div class="original-price">${game.steamOriginalPrice}</div>` : ''}
-                        </div>
-                        <div style="text-align: center;">
-                            <div style="font-size: 0.9em; color: #666; margin-bottom: 5px;">절약액</div>
-                            <div style="font-size: 1.8em; font-weight: bold; color: ${game.isProfit ? '#4caf50' : '#dc3545'};">
-                                ${formatPrice(game.savingsAmount)}
-                            </div>
-                        </div>
-                    </div>
-                    <div class="app-id-input">
-                        <label>🔧 Steam App ID: ${game.steamAppId || 'N/A'}</label>
-                    </div>
-                    <div class="input-row">
-                        <div class="sell-price-input">
-                            <label>💰 판매가 설정:</label>
-                            <input type="number" placeholder="판매가를 입력하세요" 
-                                   onchange="updateSellPrice(this, '${game.id}')" 
-                                   value="${game.sellPrice}"
-                                   min="0" step="1000">
-                        </div>
-                        <div class="korean-name-input">
-                            <label>🇰🇷 한글명 설정 (선택사항):</label>
-                            <input type="text" placeholder="한글명을 직접 입력하세요" 
-                                   onchange="updateKoreanName(this, '${game.id}')"
-                                   maxlength="50">
-                        </div>
-                    </div>
-                    ${game.url ? `
-                    <div class="action-buttons">
-                        <a href="${game.url}" target="_blank" class="btn-link btn-cdkeys">
-                            CDKeys에서 구매
-                        </a>
-                    </div>
-                    ` : ''}
-                </div>
-            `;
-            
-            document.getElementById('results').innerHTML = gameHTML;
         }
         
         function displayResults(data) {

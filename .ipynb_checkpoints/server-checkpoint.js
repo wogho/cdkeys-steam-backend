@@ -178,6 +178,71 @@ function cleanGameName(originalName) {
     return cleanName;
 }
 
+// CDKeys 단일 페이지 가격 크롤링
+async function fetchCDKeysSinglePrice(url) {
+    const cacheKey = `cdkeys_single_${url}`;
+    const cached = cache.get(cacheKey);
+    if (cached) {
+        console.log('CDKeys 단일 페이지 캐시 데이터 사용');
+        return cached;
+    }
+
+    try {
+        const browser = await initBrowser();
+        const page = await browser.newPage();
+        
+        await page.setUserAgent('Mozilla/5.0 (X11; Linux aarch64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+        
+        console.log(`CDKeys 단일 페이지 로딩: ${url}`);
+        await page.goto(url, { 
+            waitUntil: 'networkidle2',
+            timeout: 30000 
+        });
+        
+        await page.waitForSelector('.final-price', { timeout: 10000 });
+        
+        const gameData = await page.evaluate(() => {
+            // 게임 제목 추출
+            const titleElement = document.querySelector('h1.page-title') || 
+                                document.querySelector('.product-title') ||
+                                document.querySelector('h1');
+            const title = titleElement ? titleElement.textContent.trim() : '';
+            
+            // 가격 추출
+            const priceElement = document.querySelector('.final-price .price span.price');
+            const price = priceElement ? priceElement.textContent.trim() : '';
+            
+            return { 
+                originalName: title,
+                price: price,
+                url: window.location.href
+            };
+        });
+        
+        await page.close();
+        
+        if (!gameData.originalName || !gameData.price) {
+            throw new Error('게임 제목 또는 가격을 찾을 수 없습니다.');
+        }
+        
+        console.log(`단일 페이지 크롤링 완료: ${gameData.originalName} - ${gameData.price}`);
+        
+        const cleanName = cleanGameName(gameData.originalName);
+        const result = {
+            ...gameData,
+            name: cleanName,
+            id: `single_${Date.now()}`
+        };
+        
+        cache.set(cacheKey, result);
+        return result;
+        
+    } catch (error) {
+        console.error('CDKeys 단일 페이지 크롤링 오류:', error);
+        throw error;
+    }
+}
+
 // CDKeys 게임 목록 크롤링
 async function fetchCDKeysGames(url) {
     const cacheKey = `cdkeys_${url}`;
@@ -584,6 +649,86 @@ function sanitizeProductName(name) {
 }
 
 // API 엔드포인트들
+
+// 단일 페이지 가격 비교 API
+app.post('/api/compare-single', async (req, res) => {
+    const { url, margin = 0 } = req.body;
+    
+    if (!url) {
+        return res.status(400).json({ error: 'URL이 필요합니다.' });
+    }
+    
+    try {
+        console.log(`\n=== 단일 페이지 가격 비교 시작 ===`);
+        console.log(`URL: ${url}`);
+        console.log(`마진율: ${margin}%`);
+        
+        // CDKeys 단일 페이지 크롤링
+        const cdkeysGame = await fetchCDKeysSinglePrice(url);
+        
+        // Steam 가격 조회
+        const steamPrice = await fetchSteamPrice(cdkeysGame.name);
+        
+        if (!steamPrice) {
+            return res.json({
+                success: false,
+                game: cdkeysGame,
+                message: 'Steam에서 게임을 찾을 수 없습니다.'
+            });
+        }
+        
+        // 가격 파싱
+        const cdkeysPriceKRW = parsePrice(cdkeysGame.price);
+        const steamPriceKRW = parsePrice(steamPrice.final);
+        
+        // 판매가 계산 (CDKeys 가격 + 마진)
+        const sellPrice = Math.round(cdkeysPriceKRW * (1 + margin / 100));
+        
+        // 절약 금액 계산
+        const savingsAmount = steamPriceKRW - sellPrice;
+        const savingsPercent = steamPriceKRW > 0 
+            ? Math.round((savingsAmount / steamPriceKRW) * 100) 
+            : 0;
+        
+        const result = {
+            id: cdkeysGame.id,
+            originalName: cdkeysGame.originalName,
+            name: cdkeysGame.name,
+            cdkeysPrice: cdkeysGame.price,
+            cdkeysPriceKRW: cdkeysPriceKRW,
+            steamPrice: steamPrice.final,
+            steamPriceKRW: steamPriceKRW,
+            steamOriginalPrice: steamPrice.original,
+            steamDiscount: steamPrice.discount || '',
+            steamAppId: steamPrice.appid,
+            steamExactName: steamPrice.exactName,
+            steamSource: steamPrice.source,
+            sellPrice: sellPrice,
+            savingsAmount: savingsAmount,
+            savingsPercent: savingsPercent,
+            url: cdkeysGame.url,
+            isProfit: savingsAmount > 0
+        };
+        
+        console.log(`✅ 단일 페이지 비교 완료:`);
+        console.log(`   게임: ${result.name}`);
+        console.log(`   CDKeys: ${result.cdkeysPrice}`);
+        console.log(`   Steam: ${result.steamPrice}`);
+        console.log(`   절약: ${savingsPercent}%`);
+        
+        res.json({
+            success: true,
+            result: result
+        });
+        
+    } catch (error) {
+        console.error('단일 페이지 비교 오류:', error);
+        res.status(500).json({ 
+            error: '가격 비교 중 오류가 발생했습니다.',
+            details: error.message 
+        });
+    }
+});
 
 // App ID로 Steam 정보 재조회
 app.post('/api/refresh-steam-info', async (req, res) => {

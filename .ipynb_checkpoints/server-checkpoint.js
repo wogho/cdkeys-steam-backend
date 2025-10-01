@@ -178,12 +178,13 @@ function cleanGameName(originalName) {
     return cleanName;
 }
 
-// CDKeys 단일 페이지 가격 크롤링
-async function fetchCDKeysSinglePrice(url) {
-    const cacheKey = `cdkeys_single_${url}`;
+// CDKeys/Loaded 단일 페이지 가격 크롤링
+async function fetchGameSinglePrice(url) {
+    const siteName = url.includes('loaded.com') ? 'Loaded' : 'CDKeys';
+    const cacheKey = `game_single_${url}`;
     const cached = cache.get(cacheKey);
     if (cached) {
-        console.log('CDKeys 단일 페이지 캐시 데이터 사용');
+        console.log(`${siteName} 단일 페이지 캐시 데이터 사용`);
         return cached;
     }
 
@@ -193,7 +194,7 @@ async function fetchCDKeysSinglePrice(url) {
         
         await page.setUserAgent('Mozilla/5.0 (X11; Linux aarch64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
         
-        console.log(`CDKeys 단일 페이지 로딩: ${url}`);
+        console.log(`${siteName} 단일 페이지 로딩: ${url}`);
         await page.goto(url, { 
             waitUntil: 'networkidle2',
             timeout: 30000 
@@ -225,30 +226,32 @@ async function fetchCDKeysSinglePrice(url) {
             throw new Error('게임 제목 또는 가격을 찾을 수 없습니다.');
         }
         
-        console.log(`단일 페이지 크롤링 완료: ${gameData.originalName} - ${gameData.price}`);
+        console.log(`${siteName} 단일 페이지 크롤링 완료: ${gameData.originalName} - ${gameData.price}`);
         
         const cleanName = cleanGameName(gameData.originalName);
         const result = {
             ...gameData,
             name: cleanName,
-            id: `single_${Date.now()}`
+            id: `single_${Date.now()}`,
+            site: siteName
         };
         
         cache.set(cacheKey, result);
         return result;
         
     } catch (error) {
-        console.error('CDKeys 단일 페이지 크롤링 오류:', error);
+        console.error(`${siteName} 단일 페이지 크롤링 오류:`, error);
         throw error;
     }
 }
 
-// CDKeys 게임 목록 크롤링
-async function fetchCDKeysGames(url) {
-    const cacheKey = `cdkeys_${url}`;
+// CDKeys/Loaded 게임 목록 크롤링
+async function fetchGamesFromList(url) {
+    const siteName = url.includes('loaded.com') ? 'Loaded' : 'CDKeys';
+    const cacheKey = `gamelist_${url}`;
     const cached = cache.get(cacheKey);
     if (cached) {
-        console.log('CDKeys 캐시 데이터 사용');
+        console.log(`${siteName} 캐시 데이터 사용`);
         return cached;
     }
 
@@ -258,7 +261,7 @@ async function fetchCDKeysGames(url) {
         
         await page.setUserAgent('Mozilla/5.0 (X11; Linux aarch64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
         
-        console.log(`CDKeys 페이지 로딩: ${url}`);
+        console.log(`${siteName} 페이지 로딩: ${url}`);
         await page.goto(url, { 
             waitUntil: 'networkidle2',
             timeout: 30000 
@@ -293,8 +296,8 @@ async function fetchCDKeysGames(url) {
         
         await page.close();
         
-        console.log(`\n=== CDKeys 게임명 정리 시작 (PC, DLC 제거) ===`);
-        console.log(`⏰ 시간: 2025-08-21 11:11:16 UTC`);
+        console.log(`\n=== ${siteName} 게임명 정리 시작 (PC, DLC 제거) ===`);
+        console.log(`⏰ 시간: ${new Date().toISOString()}`);
         console.log(`👤 사용자: wogho`);
         
         const processedGames = games.map((game) => {
@@ -302,7 +305,8 @@ async function fetchCDKeysGames(url) {
             
             return {
                 ...game,
-                name: cleanName
+                name: cleanName,
+                site: siteName
             };
         });
         
@@ -313,7 +317,7 @@ async function fetchCDKeysGames(url) {
         return processedGames;
         
     } catch (error) {
-        console.error('CDKeys 크롤링 오류:', error);
+        console.error(`${siteName} 크롤링 오류:`, error);
         throw error;
     }
 }
@@ -659,30 +663,31 @@ app.post('/api/compare-single', async (req, res) => {
     }
     
     try {
-        console.log(`\n=== 단일 페이지 가격 비교 시작 ===`);
+        const siteName = url.includes('loaded.com') ? 'Loaded' : 'CDKeys';
+        console.log(`\n=== 단일 페이지 가격 비교 시작 (${siteName}) ===`);
         console.log(`URL: ${url}`);
         console.log(`마진율: ${margin}%`);
         
-        // CDKeys 단일 페이지 크롤링
-        const cdkeysGame = await fetchCDKeysSinglePrice(url);
+        // 단일 페이지 크롤링
+        const gameData = await fetchGameSinglePrice(url);
         
         // Steam 가격 조회
-        const steamPrice = await fetchSteamPrice(cdkeysGame.name);
+        const steamPrice = await fetchSteamPrice(gameData.name);
         
         if (!steamPrice) {
             return res.json({
                 success: false,
-                game: cdkeysGame,
+                game: gameData,
                 message: 'Steam에서 게임을 찾을 수 없습니다.'
             });
         }
         
         // 가격 파싱
-        const cdkeysPriceKRW = parsePrice(cdkeysGame.price);
+        const gamePriceKRW = parsePrice(gameData.price);
         const steamPriceKRW = parsePrice(steamPrice.final);
         
-        // 판매가 계산 (CDKeys 가격 + 마진)
-        const sellPrice = Math.round(cdkeysPriceKRW * (1 + margin / 100));
+        // 판매가 계산 (게임 가격 + 마진)
+        const sellPrice = Math.round(gamePriceKRW * (1 + margin / 100));
         
         // 절약 금액 계산
         const savingsAmount = steamPriceKRW - sellPrice;
@@ -691,11 +696,12 @@ app.post('/api/compare-single', async (req, res) => {
             : 0;
         
         const result = {
-            id: cdkeysGame.id,
-            originalName: cdkeysGame.originalName,
-            name: cdkeysGame.name,
-            cdkeysPrice: cdkeysGame.price,
-            cdkeysPriceKRW: cdkeysPriceKRW,
+            id: gameData.id,
+            originalName: gameData.originalName,
+            name: gameData.name,
+            gamePrice: gameData.price,
+            gamePriceKRW: gamePriceKRW,
+            site: gameData.site,
             steamPrice: steamPrice.final,
             steamPriceKRW: steamPriceKRW,
             steamOriginalPrice: steamPrice.original,
@@ -706,13 +712,14 @@ app.post('/api/compare-single', async (req, res) => {
             sellPrice: sellPrice,
             savingsAmount: savingsAmount,
             savingsPercent: savingsPercent,
-            url: cdkeysGame.url,
+            url: gameData.url,
             isProfit: savingsAmount > 0
         };
         
         console.log(`✅ 단일 페이지 비교 완료:`);
+        console.log(`   사이트: ${gameData.site}`);
         console.log(`   게임: ${result.name}`);
-        console.log(`   CDKeys: ${result.cdkeysPrice}`);
+        console.log(`   ${gameData.site}: ${result.gamePrice}`);
         console.log(`   Steam: ${result.steamPrice}`);
         console.log(`   절약: ${savingsPercent}%`);
         
@@ -723,6 +730,115 @@ app.post('/api/compare-single', async (req, res) => {
         
     } catch (error) {
         console.error('단일 페이지 비교 오류:', error);
+        res.status(500).json({ 
+            error: '가격 비교 중 오류가 발생했습니다.',
+            details: error.message 
+        });
+    }
+});
+
+// 여러 단일 페이지 가격 비교 API (새로 추가)
+app.post('/api/compare-multi-single', async (req, res) => {
+    const { urls, margin = 0 } = req.body;
+    
+    if (!urls || !Array.isArray(urls) || urls.length === 0) {
+        return res.status(400).json({ error: 'URL 배열이 필요합니다.' });
+    }
+    
+    try {
+        console.log(`\n=== 여러 단일 페이지 가격 비교 시작 ===`);
+        console.log(`URL 개수: ${urls.length}`);
+        console.log(`마진율: ${margin}%`);
+        
+        const results = [];
+        
+        for (let i = 0; i < urls.length; i++) {
+            const url = urls[i];
+            console.log(`\n[${i + 1}/${urls.length}] 처리 중: ${url}`);
+            
+            try {
+                // 단일 페이지 크롤링
+                const gameData = await fetchGameSinglePrice(url);
+                
+                // Steam 가격 조회
+                const steamPrice = await fetchSteamPrice(gameData.name);
+                
+                if (!steamPrice) {
+                    results.push({
+                        success: false,
+                        url: url,
+                        id: gameData.id,
+                        name: gameData.name,
+                        site: gameData.site,
+                        message: 'Steam에서 게임을 찾을 수 없습니다.'
+                    });
+                    continue;
+                }
+                
+                // 가격 파싱
+                const gamePriceKRW = parsePrice(gameData.price);
+                const steamPriceKRW = parsePrice(steamPrice.final);
+                
+                // 판매가 계산 (게임 가격 + 마진)
+                const sellPrice = Math.round(gamePriceKRW * (1 + margin / 100));
+                
+                // 절약 금액 계산
+                const savingsAmount = steamPriceKRW - sellPrice;
+                const savingsPercent = steamPriceKRW > 0 
+                    ? Math.round((savingsAmount / steamPriceKRW) * 100) 
+                    : 0;
+                
+                const result = {
+                    id: gameData.id,
+                    originalName: gameData.originalName,
+                    name: gameData.name,
+                    exactName: steamPrice.exactName || gameData.name,
+                    cdkeysPrice: gamePriceKRW,
+                    cdkeysUrl: gameData.url,
+                    site: gameData.site,
+                    steamOriginalPrice: steamPriceKRW,
+                    steamFinalPrice: steamPriceKRW,
+                    steamDiscount: steamPrice.discount || '',
+                    steamAppId: steamPrice.appid,
+                    savings: savingsAmount,
+                    savingsPercent: savingsPercent,
+                    source: steamPrice.source,
+                    isProfit: savingsAmount > 0,
+                    koreanName: ''
+                };
+                
+                results.push({
+                    success: true,
+                    result: result
+                });
+                
+                console.log(`   ✅ 완료: ${result.name} (절약: ${savingsPercent}%)`);
+                
+            } catch (error) {
+                console.error(`   ❌ 오류: ${error.message}`);
+                results.push({
+                    success: false,
+                    url: url,
+                    message: error.message
+                });
+            }
+        }
+        
+        const successCount = results.filter(r => r.success).length;
+        console.log(`\n=== 여러 단일 페이지 비교 완료: ${successCount}/${urls.length} 성공 ===`);
+        
+        res.json({
+            success: true,
+            results: results,
+            summary: {
+                total: urls.length,
+                success: successCount,
+                failed: urls.length - successCount
+            }
+        });
+        
+    } catch (error) {
+        console.error('여러 단일 페이지 비교 오류:', error);
         res.status(500).json({ 
             error: '가격 비교 중 오류가 발생했습니다.',
             details: error.message 
@@ -803,15 +919,16 @@ app.post('/api/compare', async (req, res) => {
     }
     
     try {
-        console.log('=== 가격 비교 시작 (다단계 Steam 검색 로직 적용) ===');
+        const siteName = url.includes('loaded.com') ? 'Loaded' : 'CDKeys';
+        console.log(`=== 가격 비교 시작 (다단계 Steam 검색 로직 적용, ${siteName}) ===`);
         console.log(`URL: ${url}`);
         console.log(`최소 차액: ${minDifference}원`);
-        console.log(`시간: 2025-08-21 11:11:16 UTC`);
+        console.log(`시간: ${new Date().toISOString()}`);
         console.log(`사용자: wogho`);
         
-        const cdkeysGames = await fetchCDKeysGames(url);
+        const games = await fetchGamesFromList(url);
         
-        if (cdkeysGames.length === 0) {
+        if (games.length === 0) {
             return res.json({ 
                 success: true, 
                 games: [],
@@ -822,7 +939,7 @@ app.post('/api/compare', async (req, res) => {
         const comparisons = [];
         const notFoundGames = [];
         
-        for (const game of cdkeysGames) {
+        for (const game of games) {
             try {
                 const steamPrice = await fetchSteamPrice(game.name);
                 
@@ -885,7 +1002,7 @@ app.post('/api/compare', async (req, res) => {
         
         res.json({
             success: true,
-            totalGames: cdkeysGames.length,
+            totalGames: games.length,
             discountedGames: comparisons.length,
             notFoundGames: notFoundGames.length,
             games: comparisons,

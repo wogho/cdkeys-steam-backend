@@ -67,17 +67,89 @@
             100% { box-shadow: 0 0 0 0 rgba(76, 175, 80, 0); }
         }
         
+        .tab-container {
+            margin-bottom: 30px;
+        }
+        
+        .tab-buttons {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 0;
+            border-bottom: 2px solid #e0e0e0;
+        }
+        
+        .tab-button {
+            padding: 15px 30px;
+            background: transparent;
+            border: none;
+            border-bottom: 3px solid transparent;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 600;
+            color: #666;
+            transition: all 0.3s;
+            margin-bottom: -2px;
+        }
+        
+        .tab-button:hover {
+            color: #667eea;
+            background: rgba(102, 126, 234, 0.05);
+        }
+        
+        .tab-button.active {
+            color: #667eea;
+            border-bottom-color: #667eea;
+            background: rgba(102, 126, 234, 0.1);
+        }
+        
+        .tab-content {
+            display: none;
+            animation: fadeIn 0.3s;
+        }
+        
+        .tab-content.active {
+            display: block;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
         .input-section {
             background: #f8f9fa;
             padding: 25px;
-            border-radius: 10px;
-            margin-bottom: 30px;
+            border-radius: 0 10px 10px 10px;
+            border: 2px solid #e0e0e0;
         }
         
         .input-group {
             display: flex;
             gap: 10px;
             margin-bottom: 15px;
+            flex-wrap: wrap;
+        }
+        
+        .url-input-row {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 10px;
+            align-items: center;
+        }
+        
+        .url-input-row .remove-btn {
+            padding: 8px 15px;
+            background: #dc3545;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            min-width: auto;
+        }
+        
+        .url-input-row .remove-btn:hover {
+            background: #c82333;
         }
         
         input[type="text"], input[type="number"] {
@@ -107,10 +179,11 @@
             font-size: 16px;
             font-weight: bold;
             cursor: pointer;
-            transition: transform 0.2s, box-shadow 0.2s;
+            transition: all 0.3s;
+            min-width: 150px;
         }
         
-        button:hover {
+        button:hover:not(:disabled) {
             transform: translateY(-2px);
             box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
         }
@@ -119,6 +192,12 @@
             opacity: 0.5;
             cursor: not-allowed;
             transform: none;
+        }
+        
+        .btn-group {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
         }
         
         .btn-secondary {
@@ -563,7 +642,7 @@
 </head>
 <body>
     <div class="container">
-        <h1>🎮 CDKeys-Steam 가격비교시스템</h1>
+        <h1>🎮 CDKeys/Loaded-Steam 가격비교</h1>
         
         <div class="status-bar">
             <div class="server-status">
@@ -576,33 +655,90 @@
             </div>
         </div>
         
-        <div class="input-section">
-            <div class="input-group">
-                <input type="text" 
-                       id="cdkeysUrl" 
-                       placeholder="CDKeys URL 입력 (목록 또는 단일 페이지)"
-                       value="">
-                <input type="number" 
-                       id="minDifference" 
-                       placeholder="마진율(%)"
-                       value="0"
-                       min="0"
-                       max="100">
-                <label style="display: flex; align-items: center; gap: 8px; white-space: nowrap;">
-                    <input type="checkbox" id="isSinglePage" style="width: 20px; height: 20px; cursor: pointer;">
-                    <span>단일 페이지</span>
-                </label>
-                <button id="compareBtn" onclick="startComparison()">가격 비교 시작</button>
+        <!-- 탭 기반 UI -->
+        <div class="tab-container">
+            <div class="tab-buttons">
+                <button class="tab-button active" onclick="switchTab('single')">
+                    🔍 단일 URL 검색
+                </button>
+                <button class="tab-button" onclick="switchTab('multi')">
+                    🎯 여러 URL 동시 검색
+                </button>
             </div>
-            <div class="example-urls">
-                <strong>예시 URL:</strong><br>
-                <span id="exampleUrlsText">
-                    <strong>📋 목록 페이지:</strong><br>
-                    • https://www.cdkeys.com/pc/games<br>
-                    • https://www.cdkeys.com/pc/games?primary_genre%5B0%5D=Simulation<br>
-                    <strong>📄 단일 페이지:</strong><br>
-                    • https://www.cdkeys.com/ghost-of-tsushima-director-s-cut-pc-steam
-                </span>
+            
+            <!-- 탭 1: 단일 URL 검색 -->
+            <div id="singleTab" class="tab-content active">
+                <div class="input-section">
+                    <div class="input-group">
+                        <input type="text" 
+                               id="cdkeysUrl" 
+                               placeholder="CDKeys 또는 Loaded URL 입력"
+                               style="flex: 3;"
+                               value="">
+                        <input type="number" 
+                               id="minDifference" 
+                               placeholder="마진율(%)"
+                               value="0"
+                               min="0"
+                               max="100"
+                               style="flex: 0 0 120px;">
+                        <label style="display: flex; align-items: center; gap: 8px; white-space: nowrap; flex: 0 0 auto;">
+                            <input type="checkbox" id="isSinglePage" style="width: 20px; height: 20px; cursor: pointer;">
+                            <span style="font-weight: 600;">단일 페이지</span>
+                        </label>
+                    </div>
+                    <div class="input-group">
+                        <button id="compareBtn" onclick="startComparison()" style="width: 100%;">🚀 가격 비교 시작</button>
+                    </div>
+                    <div class="example-urls">
+                        <strong style="color: #667eea;">💡 사용 방법:</strong><br>
+                        <div style="margin-top: 10px; line-height: 1.8;">
+                            <strong>📋 목록 페이지:</strong> 체크박스 <strong>해제</strong> → 여러 게임 비교<br>
+                            <code style="background: #e0e0e0; padding: 2px 8px; border-radius: 4px; font-size: 13px;">https://www.cdkeys.com/pc/games</code><br>
+                            <code style="background: #e0e0e0; padding: 2px 8px; border-radius: 4px; font-size: 13px;">https://www.loaded.com/pc/games</code><br>
+                            <br>
+                            <strong>📄 단일 페이지:</strong> 체크박스 <strong>체크</strong> → 단일 게임 비교<br>
+                            <code style="background: #e0e0e0; padding: 2px 8px; border-radius: 4px; font-size: 13px;">https://www.cdkeys.com/game-name-pc-steam</code><br>
+                            <code style="background: #e0e0e0; padding: 2px 8px; border-radius: 4px; font-size: 13px;">https://www.loaded.com/game-name-pc-steam</code>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 탭 2: 여러 URL 동시 검색 -->
+            <div id="multiTab" class="tab-content">
+                <div class="input-section">
+                    <div id="urlInputsContainer">
+                        <!-- URL 입력란들이 동적으로 추가됨 -->
+                    </div>
+                    <div class="btn-group" style="margin-bottom: 15px;">
+                        <button type="button" onclick="addUrlInput()" class="btn-info" style="background: linear-gradient(135deg, #17a2b8, #138496) !important; min-width: auto;">➕ URL 추가</button>
+                        <button type="button" onclick="removeUrlInput()" class="btn-warning" style="background: linear-gradient(135deg, #ffc107, #e0a800) !important; color: #212529 !important; min-width: auto;">➖ URL 삭제</button>
+                        <button type="button" onclick="clearAllUrls()" class="btn-secondary" style="min-width: auto;">🗑️ 전체 초기화</button>
+                    </div>
+                    <div class="input-group">
+                        <input type="number" 
+                               id="minDifferenceMulti" 
+                               placeholder="마진율(%)"
+                               value="0"
+                               min="0"
+                               max="100"
+                               style="flex: 0 0 150px;">
+                        <button id="compareMultiBtn" onclick="startMultiSingleComparison()" class="btn-success" style="flex: 1; background: linear-gradient(135deg, #28a745, #218838) !important;">🚀 여러 게임 가격 비교 시작</button>
+                    </div>
+                    <div class="example-urls">
+                        <strong style="color: #667eea;">💡 사용 방법:</strong><br>
+                        <div style="margin-top: 10px; line-height: 1.8;">
+                            1. <strong>➕ URL 추가</strong> 버튼을 클릭하여 입력란 추가<br>
+                            2. 각 입력란에 <strong>CDKeys/Loaded 단일 페이지 URL</strong> 입력<br>
+                            3. 마진율을 설정하고 <strong>🚀 여러 게임 가격 비교 시작</strong> 클릭<br>
+                            <br>
+                            <strong>예시:</strong><br>
+                            <code style="background: #e0e0e0; padding: 2px 8px; border-radius: 4px; font-size: 13px;">https://www.cdkeys.com/game-name-pc-steam</code><br>
+                            <code style="background: #e0e0e0; padding: 2px 8px; border-radius: 4px; font-size: 13px;">https://www.loaded.com/game-name-pc-steam</code>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
         
@@ -670,6 +806,83 @@
         let allGames = [];
         let notFoundGames = [];
         
+        // 탭 전환 함수
+        function switchTab(tabName) {
+            // 모든 탭 버튼과 콘텐츠의 active 클래스 제거
+            document.querySelectorAll('.tab-button').forEach(btn => btn.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+            
+            // 선택된 탭 활성화
+            if (tabName === 'single') {
+                document.querySelector('.tab-button:first-child').classList.add('active');
+                document.getElementById('singleTab').classList.add('active');
+            } else if (tabName === 'multi') {
+                document.querySelector('.tab-button:last-child').classList.add('active');
+                document.getElementById('multiTab').classList.add('active');
+                // 멀티 탭으로 전환 시 URL 입력란 초기화
+                initializeMultiUrlInputs();
+            }
+        }
+        
+        // 멀티 URL 입력란 초기화
+        function initializeMultiUrlInputs() {
+            const container = document.getElementById('urlInputsContainer');
+            if (container.children.length === 0) {
+                addUrlInput();
+            }
+        }
+        
+        // URL 입력란 추가 (개선된 UI)
+        function addUrlInput() {
+            const container = document.getElementById('urlInputsContainer');
+            const count = container.querySelectorAll('.url-input-row').length + 1;
+            
+            const inputRow = document.createElement('div');
+            inputRow.className = 'url-input-row';
+            
+            const input = document.createElement('input');
+            input.type = 'text';
+            input.className = 'single-page-url';
+            input.placeholder = `CDKeys 단일 페이지 URL #${count}`;
+            input.style.flex = '1';
+            
+            const removeBtn = document.createElement('button');
+            removeBtn.className = 'remove-btn';
+            removeBtn.textContent = '✕';
+            removeBtn.onclick = function() {
+                if (container.querySelectorAll('.url-input-row').length > 1) {
+                    inputRow.remove();
+                } else {
+                    alert('최소 1개의 URL 입력란은 유지되어야 합니다.');
+                }
+            };
+            
+            inputRow.appendChild(input);
+            inputRow.appendChild(removeBtn);
+            container.appendChild(inputRow);
+        }
+        
+        // URL 입력란 삭제 (마지막 것만)
+        function removeUrlInput() {
+            const container = document.getElementById('urlInputsContainer');
+            const rows = container.querySelectorAll('.url-input-row');
+            
+            if (rows.length > 1) {
+                container.removeChild(rows[rows.length - 1]);
+            } else {
+                alert('최소 1개의 URL 입력란은 유지되어야 합니다.');
+            }
+        }
+        
+        // 전체 URL 초기화
+        function clearAllUrls() {
+            if (confirm('모든 입력된 URL을 초기화하시겠습니까?')) {
+                const container = document.getElementById('urlInputsContainer');
+                container.innerHTML = '';
+                addUrlInput();
+            }
+        }
+        
         async function checkServerStatus() {
             try {
                 const response = await fetch(`${SERVER_URL}/api/status`);
@@ -689,20 +902,23 @@
         window.addEventListener('load', () => {
             checkServerStatus();
             setInterval(checkServerStatus, 30000);
+            // 페이지 로드 시 멀티 URL 입력란 초기화
+            initializeMultiUrlInputs();
         });
         
+        // 기존 단일 URL 가격 비교 (목록 또는 단일 페이지)
         async function startComparison() {
             const url = document.getElementById('cdkeysUrl').value.trim();
             const margin = parseInt(document.getElementById('minDifference').value) || 0;
             const isSinglePage = document.getElementById('isSinglePage').checked;
             
             if (!url) {
-                showError('CDKeys URL을 입력해주세요.');
+                showError('URL을 입력해주세요.');
                 return;
             }
             
-            if (!url.includes('cdkeys.com')) {
-                showError('올바른 CDKeys URL을 입력해주세요.');
+            if (!url.includes('cdkeys.com') && !url.includes('loaded.com')) {
+                showError('올바른 CDKeys 또는 Loaded URL을 입력해주세요.');
                 return;
             }
             
@@ -787,6 +1003,94 @@
                 } finally {
                     button.disabled = false;
                 }
+            }
+        }
+        
+
+        
+        // 여러 단일 페이지 가격 비교
+        async function startMultiSingleComparison() {
+            const urlInputs = document.querySelectorAll('.single-page-url');
+            const urls = Array.from(urlInputs)
+                .map(input => input.value.trim())
+                .filter(url => url.length > 0);
+            
+            const margin = parseInt(document.getElementById('minDifferenceMulti').value) || 0;
+            
+            if (urls.length === 0) {
+                showError('단일 페이지 URL을 하나 이상 입력해주세요.');
+                return;
+            }
+            
+            // 모든 URL이 cdkeys.com 또는 loaded.com을 포함하는지 확인
+            const invalidUrls = urls.filter(url => !url.includes('cdkeys.com') && !url.includes('loaded.com'));
+            if (invalidUrls.length > 0) {
+                showError('모든 URL은 cdkeys.com 또는 loaded.com을 포함해야 합니다.');
+                return;
+            }
+            
+            const button = document.getElementById('compareMultiBtn');
+            button.disabled = true;
+            
+            document.getElementById('results').innerHTML = '';
+            document.getElementById('notFoundResults').innerHTML = '';
+            document.getElementById('statsSection').style.display = 'none';
+            document.getElementById('exportSection').classList.remove('show');
+            document.getElementById('notFoundSection').classList.remove('show');
+            selectedGames = [];
+            allGames = [];
+            notFoundGames = [];
+            
+            showProgress(`${urls.length}개의 단일 페이지에서 가격 정보를 수집중입니다...`, 10);
+            
+            try {
+                const response = await fetch(`${SERVER_URL}/api/compare-multi-single`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ urls, margin })
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`서버 오류: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    allGames = data.results.filter(r => r.success).map(r => r.result);
+                    notFoundGames = data.results.filter(r => !r.success).map(r => ({
+                        id: r.id || 'unknown',
+                        name: r.name || '알 수 없음',
+                        price: '알 수 없음',
+                        cdkeysUrl: r.url || '',
+                        reason: r.message || 'Steam에서 찾을 수 없음'
+                    }));
+                    
+                    // 결과 표시
+                    displayResults({
+                        totalGames: allGames.length + notFoundGames.length,
+                        discountedGames: allGames.filter(g => g.isProfit).length,
+                        notFoundGames: notFoundGames.length,
+                        games: allGames
+                    });
+                    
+                    if (notFoundGames.length > 0) {
+                        displayNotFoundGames({ notFound: notFoundGames });
+                    }
+                    
+                    hideProgress();
+                } else {
+                    showError(data.message || '게임을 찾을 수 없습니다.');
+                    hideProgress();
+                }
+                
+            } catch (error) {
+                showError(`오류 발생: ${error.message}`);
+                hideProgress();
+            } finally {
+                button.disabled = false;
             }
         }
         
